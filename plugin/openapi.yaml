@@ -1,0 +1,115 @@
+openapi: 3.0.1
+info:
+  title: Gnosis Plugin
+  description: A ChatGPT plugin for querying and reflecting on your Obsidian vault using hybrid RAG
+  version: 1.0.0
+servers:
+  - url: http://localhost:8000
+    description: Local development server
+paths:
+  /query:
+    get:
+      operationId: queryVault
+      summary: Query your personal knowledge base
+      parameters:
+        - name: q
+          in: query
+          description: Natural language query
+          schema:
+            type: string
+          required: true
+        - name: tags
+          in: query
+          description: Optional list of tags to filter by
+          schema:
+            type: array
+            items:
+              type: string
+        - name: date_range
+          in: query
+          description: Optional date range filter (e.g. "last_30_days")
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Query result with sources
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  response:
+                    type: string
+                    description: Synthesized answer with links to source thoughts
+                  sources:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        title:
+                          type: string
+                        excerpt:
+                          type: string
+                        score:
+                          type: number
+                          format: float
+  /themes:
+    get:
+      operationId: getThemes
+      summary: Get most discussed themes and patterns
+      responses:
+        '200':
+          description: Thematic analysis
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  themes:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        frequency:
+                          type: integer
+                        related_tags:
+                          type: array
+                          items:
+                            type: string
+  /reflect:
+    post:
+      operationId: generateReflection
+      summary: Generate reflections over time
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                mode:
+                  type: string
+                  enum: [weekly, monthly]
+                  description: Reflection timeframe
+                agent:
+                  type: string
+                  enum: [gnosis, anima, archivist]
+                  description: Reflection perspective/personality
+      responses:
+        '200':
+          description: GPT-generated reflection
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  reflection:
+                    type: string
+                  insights:
+                    type: array
+                    items:
+                      type: string
+                  time_period:
+                    type: string 

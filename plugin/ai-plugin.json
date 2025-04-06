@@ -1,0 +1,17 @@
+{
+  "schema_version": "v1",
+  "name_for_human": "Gnosis Journal Plugin",
+  "name_for_model": "gnosis_rag",
+  "description_for_human": "Talk to your Obsidian vault. Explore your thoughts, themes, and inner archetypes through natural conversation.",
+  "description_for_model": "This plugin enables semantic and symbolic search over an Obsidian vault using hybrid RAG (Retrieval Augmented Generation). It can query notes, analyze themes, and generate reflections based on personal journal entries.",
+  "auth": {
+    "type": "none"
+  },
+  "api": {
+    "type": "openapi",
+    "url": "http://localhost:8000/openapi.yaml"
+  },
+  "logo_url": "http://localhost:8000/logo.png",
+  "contact_email": "contact@example.com",
+  "legal_info_url": "http://localhost:8000/legal"
+} 

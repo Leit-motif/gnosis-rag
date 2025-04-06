@@ -1,0 +1,37 @@
+# Obsidian Vault Configuration
+vault:
+  path: ""  # Set your vault path here
+  exclude_folders: ["templates", ".trash", ".git"]
+  file_extensions: [".md"]
+
+# Embedding Configuration
+embeddings:
+  provider: "openai"  # or "local"
+  model: "text-embedding-3-small"  # for OpenAI
+  local_model: "all-MiniLM-L6-v2"  # for local embeddings
+  batch_size: 32
+  max_tokens: 8191
+
+# Vector Store Configuration
+vector_store:
+  type: "faiss"  # or "chroma" or "qdrant"
+  dimension: 1536  # 1536 for OpenAI, 384 for all-MiniLM
+  index_path: "data/vector_store"
+  similarity_metric: "cosine"
+
+# Text Processing
+chunking:
+  chunk_size: 512
+  chunk_overlap: 50
+  split_by: "paragraph"  # or "sentence"
+
+# API Configuration
+api:
+  host: "127.0.0.1"
+  port: 8000
+  debug: true
+
+# Logging
+logging:
+  level: "INFO"
+  file: "logs/gnosis.log" 
