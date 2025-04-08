@@ -1,10 +1,11 @@
 import os
-from typing import List, Dict, Any, Optional, Set
+from typing import List, Dict, Any, Optional, Set, Generator
 from datetime import datetime
 import re
 import frontmatter
 from pathlib import Path
 import yaml
+import logging
 
 class ObsidianNote:
     def __init__(
@@ -62,38 +63,151 @@ class ObsidianNote:
 class ObsidianLoader:
     def __init__(self, vault_path: str):
         self.vault_path = Path(vault_path)
+        self.logger = logging.getLogger(__name__)
         self.notes: Dict[str, ObsidianNote] = {}
         self.tags: Set[str] = set()
         self.link_graph: Dict[str, Set[str]] = {}
+        self.documents = []
         
     def load_vault(self, config: Dict[str, Any]) -> None:
-        """Load all notes from the vault"""
-        exclude_folders = set(config["vault"]["exclude_folders"])
-        allowed_extensions = set(config["vault"]["file_extensions"])
+        """Load all markdown files from the vault"""
+        try:
+            self.logger.info(f"Loading vault from {self.vault_path}")
+            
+            # Get excluded folders and allowed extensions
+            exclude_folders = set(config["vault"]["exclude_folders"])
+            allowed_extensions = set(config["vault"]["file_extensions"])
+            
+            # Walk through the vault
+            for root, dirs, files in os.walk(self.vault_path):
+                # Remove excluded folders
+                dirs[:] = [d for d in dirs if d not in exclude_folders]
+                
+                for file in files:
+                    if any(file.endswith(ext) for ext in allowed_extensions):
+                        file_path = Path(root) / file
+                        try:
+                            self.process_file(file_path, config)
+                        except Exception as e:
+                            self.logger.error(f"Error processing file {file_path}: {str(e)}")
+                            
+            self.logger.info(f"Loaded {len(self.documents)} documents from vault")
+            
+        except Exception as e:
+            self.logger.error(f"Error loading vault: {str(e)}")
+            raise
+            
+    def process_file(self, file_path: Path, config: Dict[str, Any]) -> None:
+        """Process a single markdown file"""
+        try:
+            relative_path = file_path.relative_to(self.vault_path)
+            self.logger.debug(f"Processing file: {relative_path}")
+            
+            # Read file content
+            content = frontmatter.load(file_path)
+            
+            # Extract metadata
+            metadata = {
+                'title': content.get('title', file_path.stem),
+                'tags': content.get('tags', []),
+                'created': content.get('created', None),
+                'path': str(relative_path),
+            }
+            
+            # Process content into chunks
+            chunks = self.chunk_content(
+                content.content,
+                config["chunking"]["chunk_size"],
+                config["chunking"]["chunk_overlap"],
+                config["chunking"]["split_by"]
+            )
+            
+            # Store document chunks
+            for i, chunk in enumerate(chunks):
+                self.documents.append({
+                    'id': f"{relative_path}#{i}",
+                    'content': chunk,
+                    'metadata': metadata
+                })
+                
+        except Exception as e:
+            self.logger.error(f"Error processing file {file_path}: {str(e)}")
+            raise
+            
+    def chunk_content(
+        self,
+        content: str,
+        chunk_size: int,
+        chunk_overlap: int,
+        split_by: str
+    ) -> List[str]:
+        """Split content into overlapping chunks"""
+        if split_by == "paragraph":
+            # Split by double newline to preserve paragraph structure
+            paragraphs = [p.strip() for p in re.split(r'\n\s*\n', content) if p.strip()]
+            chunks = []
+            current_chunk = []
+            current_size = 0
+            
+            for para in paragraphs:
+                para_size = len(para.split())
+                if current_size + para_size > chunk_size and current_chunk:
+                    # Store current chunk
+                    chunks.append(' '.join(current_chunk))
+                    # Keep last part for overlap
+                    overlap_size = 0
+                    overlap_chunk = []
+                    for p in reversed(current_chunk):
+                        p_size = len(p.split())
+                        if overlap_size + p_size <= chunk_overlap:
+                            overlap_chunk.insert(0, p)
+                            overlap_size += p_size
+                        else:
+                            break
+                    current_chunk = overlap_chunk
+                    current_size = overlap_size
+                
+                current_chunk.append(para)
+                current_size += para_size
+            
+            if current_chunk:
+                chunks.append(' '.join(current_chunk))
+                
+        else:  # split_by == "sentence"
+            # Simple sentence splitting - can be improved
+            sentences = [s.strip() for s in re.split(r'[.!?]+', content) if s.strip()]
+            chunks = []
+            current_chunk = []
+            current_size = 0
+            
+            for sentence in sentences:
+                sentence_size = len(sentence.split())
+                if current_size + sentence_size > chunk_size and current_chunk:
+                    chunks.append(' '.join(current_chunk))
+                    # Calculate overlap
+                    overlap_size = 0
+                    overlap_chunk = []
+                    for s in reversed(current_chunk):
+                        s_size = len(s.split())
+                        if overlap_size + s_size <= chunk_overlap:
+                            overlap_chunk.insert(0, s)
+                            overlap_size += s_size
+                        else:
+                            break
+                    current_chunk = overlap_chunk
+                    current_size = overlap_size
+                
+                current_chunk.append(sentence)
+                current_size += sentence_size
+            
+            if current_chunk:
+                chunks.append(' '.join(current_chunk))
         
-        for file_path in self.vault_path.rglob("*"):
-            # Skip excluded folders
-            if any(parent.name in exclude_folders for parent in file_path.parents):
-                continue
-                
-            # Check file extension
-            if file_path.suffix not in allowed_extensions:
-                continue
-                
-            try:
-                note = self._load_note(file_path)
-                if note:
-                    self.notes[note.path] = note
-                    self.tags.update(note.tags)
-                    
-                    # Update link graph
-                    self.link_graph[note.path] = note.links
-                    
-            except Exception as e:
-                print(f"Error loading {file_path}: {e}")
-                
-        # Build bidirectional link graph
-        self._build_backlinks()
+        return chunks
+        
+    def get_documents(self) -> List[Dict[str, Any]]:
+        """Return all processed documents"""
+        return self.documents
         
     def _load_note(self, file_path: Path) -> Optional[ObsidianNote]:
         """Load and parse a single note"""

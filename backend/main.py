@@ -2,16 +2,25 @@ from fastapi import FastAPI, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
-import yaml
-import os
 from datetime import datetime, timedelta
+import logging
 
 from .rag_pipeline import RAGPipeline
-from .obsidian_loader import ObsidianLoader
+from .obsidian_loader_v2 import ObsidianLoaderV2
+from .utils import load_config, ensure_directories, validate_config
 
-# Load configuration
-with open("config.yaml", "r") as f:
-    config = yaml.safe_load(f)
+# Load and validate configuration
+config = load_config()
+validate_config(config)
+ensure_directories(config)
+
+# Configure logging
+logging.basicConfig(
+    level=config["logging"]["level"],
+    filename=config["logging"]["file"],
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="Gnosis RAG API",
@@ -28,9 +37,55 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize RAG pipeline
-rag_pipeline = RAGPipeline(config)
-vault_loader = ObsidianLoader(config["vault"]["path"])
+# Initialize components
+try:
+    logger.info("Initializing RAG pipeline...")
+    rag_pipeline = RAGPipeline(config)
+    
+    logger.info("Loading Obsidian vault...")
+    vault_loader = ObsidianLoaderV2(config["vault"]["path"])
+    
+    logger.info("Initialization complete!")
+except Exception as e:
+    logger.error(f"Failed to initialize: {str(e)}")
+    raise
+
+@app.post("/index")
+async def index_vault():
+    """
+    Index the Obsidian vault content into the vector store.
+    This needs to be called before querying.
+    """
+    try:
+        logger.info("Starting vault indexing...")
+        
+        # Step 1: Load documents from vault
+        documents = vault_loader.load_vault(config)
+        logger.info(f"Loaded {len(documents)} documents from vault")
+        
+        # Step 2: Create embeddings and index documents
+        indexed_documents = [
+            {
+                'id': f"{doc.metadata['source']}#{doc.metadata['chunk_id']}",
+                'content': doc.page_content,
+                'metadata': doc.metadata
+            }
+            for doc in documents
+        ]
+        rag_pipeline.index_documents(indexed_documents)
+        logger.info("Indexing complete!")
+        
+        return {
+            "status": "success",
+            "message": f"Indexed {len(documents)} documents from vault",
+            "document_count": len(documents)
+        }
+    except Exception as e:
+        logger.error(f"Indexing failed: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to index vault: {str(e)}"
+        )
 
 class ReflectionRequest(BaseModel):
     mode: str
@@ -42,7 +97,12 @@ async def query_vault(
     tags: Optional[List[str]] = Query(None),
     date_range: Optional[str] = None
 ):
+    """
+    Query the Obsidian vault using hybrid search
+    """
     try:
+        logger.info(f"Processing query: {q}")
+        
         # Parse date range if provided
         start_date = None
         end_date = None
@@ -60,27 +120,40 @@ async def query_vault(
             end_date=end_date
         )
         
+        logger.info("Query processed successfully")
         return response
+        
+    except HTTPException as he:
+        # Re-raise FastAPI HTTP exceptions
+        raise he
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Query failed: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )
 
 @app.get("/themes")
 async def get_themes():
     try:
+        logger.info("Analyzing themes...")
         themes = rag_pipeline.analyze_themes()
         return {"themes": themes}
     except Exception as e:
+        logger.error(f"Theme analysis failed: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/reflect")
 async def generate_reflection(request: ReflectionRequest):
     try:
+        logger.info(f"Generating {request.mode} reflection with {request.agent} agent...")
         reflection = rag_pipeline.generate_reflection(
             mode=request.mode,
             agent=request.agent
         )
         return reflection
     except Exception as e:
+        logger.error(f"Reflection generation failed: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
