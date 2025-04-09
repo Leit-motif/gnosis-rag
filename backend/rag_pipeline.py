@@ -4,9 +4,6 @@ import faiss
 import numpy as np
 from datetime import datetime, timedelta
 from openai import OpenAI
-from sentence_transformers import SentenceTransformer
-import chromadb
-from qdrant_client import QdrantClient
 from tenacity import retry, stop_after_attempt, wait_exponential
 import logging
 from fastapi import HTTPException
@@ -18,6 +15,8 @@ import math
 import tempfile
 import shutil
 from .graph_retriever import GraphRetriever
+from .conversation_memory import ConversationMemory
+import json
 
 class RAGPipeline:
     def __init__(self, config: Dict[str, Any]):
@@ -26,50 +25,64 @@ class RAGPipeline:
         self.logger = logging.getLogger(__name__)
         self.document_store = {}  # Initialize empty document store
         
-        # Initialize embeddings
-        if config["embeddings"]["provider"] == "openai":
-            self.embed = self._embed_openai
-            self.batch_size = 500  # Increased batch size for OpenAI API
-        else:
-            self.model = SentenceTransformer(config["embeddings"]["local_model"])
-            self.embed = self._embed_local
-            self.batch_size = config["embeddings"]["batch_size"]
+        # Initialize embeddings - OpenAI only
+        self.embed = self._embed_openai
+        self.batch_size = 500  # Increased batch size for OpenAI API
             
-        # Initialize vector store
-        if config["vector_store"]["type"] == "faiss":
-            # Check if we have embeddings
-            if self._have_temp_embeddings():
-                self.logger.info("Found existing embeddings, loading them...")
-                try:
-                    embeddings, documents = self._load_temp_embeddings()
-                    self.logger.info(f"Loaded {len(embeddings)} embeddings")
-                    
-                    # Store documents
-                    for i, doc in enumerate(documents):
-                        self.document_store[str(i)] = {
-                            'content': doc['content'],
-                            'metadata': doc['metadata']
-                        }
-                    
-                    # Create index
-                    self.index = self._create_faiss_index(embeddings)
-                    self.logger.info(f"Created FAISS index with {self.index.ntotal} vectors")
-                except Exception as e:
-                    self.logger.error(f"Failed to load embeddings: {str(e)}")
-                    self.logger.info("Creating empty index instead")
-                    self.index = self._init_faiss()
-            else:
+        # Initialize FAISS index
+        if self._have_temp_embeddings():
+            self.logger.info("Found existing embeddings, loading them...")
+            try:
+                embeddings, documents = self._load_temp_embeddings()
+                self.logger.info(f"Loaded {len(embeddings)} embeddings")
+                
+                # Store documents
+                for i, doc in enumerate(documents):
+                    self.document_store[str(i)] = {
+                        'content': doc['content'],
+                        'metadata': doc['metadata']
+                    }
+                
+                # Create index
+                self.index = self._create_faiss_index(embeddings)
+                self.logger.info(f"Created FAISS index with {self.index.ntotal} vectors")
+            except Exception as e:
+                self.logger.error(f"Failed to load embeddings: {str(e)}")
+                self.logger.info("Creating empty index instead")
                 self.index = self._init_faiss()
-        elif config["vector_store"]["type"] == "chroma":
-            self.vector_store = chromadb.Client()
-        else:  # qdrant
-            self.vector_store = QdrantClient("localhost")
+        else:
+            self.index = self._init_faiss()
             
         # Initialize graph retriever
         self.graph_retriever = GraphRetriever(config["vault"]["path"])
         self.graph_retriever.build_graph()
         self.logger.info("Graph retriever initialized")
         
+        # Initialize conversation memory
+        self.conversation_memory = ConversationMemory(
+            storage_dir=config.get("conversation_storage_dir", "data/conversations"),
+            max_history=config.get("max_conversation_history", 10),
+            context_window=config.get("conversation_context_window", 5)
+        )
+        
+        # Initialize document store
+        self.docs_dir = Path(config["docs_dir"])
+        self.docs_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Initialize vector store
+        self.index_path = Path(config["index_path"])
+        self.embeddings_path = Path(config["embeddings_path"])
+        
+        if self.index_path.exists() and self.embeddings_path.exists():
+            # Load existing index and embeddings
+            self.index = faiss.read_index(str(self.index_path))
+            with open(self.embeddings_path, 'r') as f:
+                self.doc_embeddings = json.load(f)
+        else:
+            # Initialize new index and embeddings
+            self.index = faiss.IndexFlatL2(1536)  # OpenAI embedding dimension
+            self.doc_embeddings = {}
+
     def _init_faiss(self) -> faiss.Index:
         """Initialize FAISS index"""
         try:
@@ -126,10 +139,6 @@ class RAGPipeline:
         except Exception as e:
             self.logger.error(f"OpenAI API error: {str(e)}")
             raise
-    
-    def _embed_local(self, texts: List[str]) -> np.ndarray:
-        """Get embeddings using local model"""
-        return self.model.encode(texts, batch_size=self.batch_size)
     
     def _process_batch(self, batch: List[Dict[str, Any]], batch_idx: int) -> Tuple[np.ndarray, List[Dict[str, Any]]]:
         """Process a single batch of documents"""
@@ -344,163 +353,87 @@ class RAGPipeline:
     def query(
         self,
         query: str,
-        tags: Optional[List[str]] = None,
-        start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None,
         k: int = 5,
-        use_graph: bool = True
+        session_id: Optional[str] = None,
+        conversation_memory: Optional[ConversationMemory] = None
     ) -> Dict[str, Any]:
         """
-        Hybrid search combining semantic, metadata, and graph-based retrieval
+        Query the RAG pipeline with conversation memory
         """
         try:
-            # Get query embedding
-            query_embedding = self.embed([query])[0]
+            # Use instance conversation memory if none provided
+            conversation_memory = conversation_memory or self.conversation_memory
             
-            # Semantic search
-            if self.config["vector_store"]["type"] == "faiss":
-                if self.index.ntotal == 0:
-                    return {
-                        "response": "No documents have been indexed yet. Please index your Obsidian vault first.",
-                        "sources": []
-                    }
-                
-                # Get more results than needed for filtering
-                D, I = self.index.search(query_embedding.reshape(1, -1), k * 2)
-                
-                # Filter results by metadata
-                filtered_results = []
-                for i, d in zip(I[0], D[0]):
-                    doc_id = str(i)
-                    if doc_id not in self.document_store:
-                        continue
-                        
-                    doc = self.document_store[doc_id]
-                    metadata = doc["metadata"]
-                    
-                    # Check date range if specified
-                    if start_date or end_date:
-                        if "date" not in metadata:
-                            continue
-                        doc_date = datetime.strptime(metadata["date"], "%Y-%m-%d")
-                        if start_date and doc_date < start_date:
-                            continue
-                        if end_date and doc_date > end_date:
-                            continue
-                    
-                    # Check tags if specified
-                    if tags:
-                        doc_tags = metadata.get("tags", [])
-                        if not any(tag in doc_tags for tag in tags):
-                            continue
-                    
-                    filtered_results.append({
-                        "id": doc_id,
-                        "score": float(d),
-                        "excerpt": doc["content"],
-                        "metadata": {
-                            **metadata,
-                            "graph_distance": 0,  # Direct semantic match has distance 0
-                            "graph_similarity": 1.0  # Direct match has full similarity
-                        }
-                    })
-                
-                # Sort by score and take top k
-                filtered_results.sort(key=lambda x: x["score"], reverse=True)
-                semantic_results = filtered_results[:k]
-                
-                # If graph retrieval is enabled, enhance results with graph-based retrieval
-                if use_graph and semantic_results:
-                    # Get the top result's path
-                    top_result = semantic_results[0]
-                    source_path = top_result["metadata"].get("source", "")
-                    
-                    if source_path:
-                        # Get related documents from graph with different distances
-                        related_docs = []
-                        for distance in range(1, 3):  # Try distances 1 and 2
-                            docs = self.graph_retriever.get_related_documents(
-                                source_path,
-                                max_distance=distance,
-                                min_similarity=0.3
-                            )
-                            related_docs.extend(docs)
-                        
-                        # Add graph-based results with distance-based scoring
-                        for doc in related_docs:
-                            doc_path = doc["document"]
-                            metadata = self.graph_retriever.get_document_metadata(doc_path)
-                            
-                            # Skip if we already have this document
-                            if any(r["metadata"].get("source") == doc_path for r in semantic_results):
-                                continue
-                                
-                            # Calculate combined score based on graph distance and similarity
-                            distance_weight = 1.0 / (1.0 + doc["distance"])  # Exponential decay
-                            combined_score = doc["similarity"] * distance_weight
-                            
-                            # Add to results with adjusted score
-                            semantic_results.append({
-                                "id": f"graph_{len(semantic_results)}",
-                                "score": combined_score,
-                                "excerpt": metadata.get("content", ""),
-                                "metadata": {
-                                    **metadata,
-                                    "source": doc_path,
-                                    "graph_distance": doc["distance"],
-                                    "graph_similarity": doc["similarity"]
-                                }
-                            })
-                
-                # Sort all results by score
-                semantic_results.sort(key=lambda x: x["score"], reverse=True)
-                results = semantic_results[:k]
-                
-                # Generate response using the top results
-                context = "\n\n".join([
-                    f"Source {i+1}:\n{r['excerpt']}"
-                    for i, r in enumerate(results)
-                ])
-                
-                # Add graph connections to the prompt
-                graph_connections = []
-                for i, r1 in enumerate(results):
-                    for j, r2 in enumerate(results[i+1:], i+1):
-                        if r1["metadata"].get("graph_distance") is not None and r2["metadata"].get("graph_distance") is not None:
-                            common_tags = self.graph_retriever.get_common_tags(
-                                r1["metadata"]["source"],
-                                r2["metadata"]["source"]
-                            )
-                            if common_tags:
-                                graph_connections.append(
-                                    f"Sources {i+1} and {j+1} share these tags: {', '.join(common_tags)}"
-                                )
-                
-                if graph_connections:
-                    context += "\n\nGraph Connections:\n" + "\n".join(graph_connections)
-                
-                # Generate response
-                response = self.client.chat.completions.create(
-                    model="gpt-4",
-                    messages=[
-                        {"role": "system", "content": "You are a helpful assistant that synthesizes information from multiple sources. Pay attention to the graph connections between sources and explain how they relate to each other."},
-                        {"role": "user", "content": f"Question: {query}\n\nContext:\n{context}\n\nPlease provide a comprehensive answer based on the sources above, highlighting any connections between them."}
-                    ],
-                    temperature=0.7,
-                    max_tokens=1000
+            # Generate session ID if none provided
+            if not session_id:
+                session_id = str(int(time.time()))
+            
+            # Get conversation context
+            conversation_context = conversation_memory.get_context(session_id) if session_id else ""
+            
+            # Perform semantic search
+            query_vector = self.embed([query])[0]
+            D, I = self.index.search(query_vector.reshape(1, -1), k)
+            
+            # Get results
+            results = []
+            for i, idx in enumerate(I[0]):
+                if idx == -1 or str(idx) not in self.document_store:
+                    continue
+                doc = self.document_store[str(idx)]
+                results.append({
+                    'content': doc['content'],
+                    'metadata': doc['metadata'],
+                    'score': float(D[0][i])
+                })
+            
+            # Get graph context
+            graph_results = self.graph_retriever.get_context(results)
+            
+            # Combine results
+            context = "\n\n".join([
+                f"Source {i+1}:\n{result['content']}\nConnections: {', '.join(graph_results.get(result['metadata']['path'], []))}"
+                for i, result in enumerate(results)
+            ])
+            
+            # Build messages for chat completion
+            messages = [
+                {"role": "system", "content": """You are a helpful assistant that synthesizes information from multiple sources and maintains context across conversations. 
+Pay attention to the graph connections between sources and explain how they relate to each other.
+When referring to previous conversations, be natural and contextual in your responses."""},
+            ]
+            
+            # Add conversation history if available
+            if conversation_context:
+                messages.append({"role": "system", "content": f"Previous conversation context:\n{conversation_context}"})
+            
+            # Add current query and context
+            messages.append({"role": "user", "content": f"Question: {query}\n\nContext:\n{context}\n\nPlease provide a comprehensive answer based on the sources above, highlighting any connections between them and relating to our previous conversation where relevant."})
+            
+            # Generate response
+            response = self.client.chat.completions.create(
+                model=self.config.get("chat_model", "gpt-4"),
+                messages=messages,
+                temperature=0.7,
+                max_tokens=1000
+            )
+            
+            # Store the interaction in conversation memory
+            try:
+                conversation_memory.add_interaction(
+                    session_id=session_id,
+                    user_message=query,
+                    assistant_message=response.choices[0].message.content
                 )
-                
-                return {
-                    "response": response.choices[0].message.content,
-                    "sources": results
-                }
-                
-            else:
-                return {
-                    "response": "Vector store type not supported",
-                    "sources": []
-                }
-                
+            except Exception as e:
+                self.logger.warning(f"Failed to store conversation: {str(e)}")
+            
+            return {
+                "response": response.choices[0].message.content,
+                "sources": results,
+                "session_id": session_id
+            }
+            
         except Exception as e:
             self.logger.error(f"Query failed: {str(e)}")
             raise HTTPException(status_code=500, detail=str(e))

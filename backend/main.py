@@ -94,6 +94,7 @@ class ReflectionRequest(BaseModel):
 @app.get("/query")
 async def query_vault(
     q: str,
+    session_id: Optional[str] = Query(None),
     tags: Optional[List[str]] = Query(None),
     date_range: Optional[str] = None
 ):
@@ -102,6 +103,11 @@ async def query_vault(
     """
     try:
         logger.info(f"Processing query: {q}")
+        
+        # Generate session ID if not provided
+        if not session_id:
+            session_id = f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            logger.info(f"Generated new session ID: {session_id}")
         
         # Parse date range if provided
         start_date = None
@@ -115,10 +121,15 @@ async def query_vault(
         # Query the RAG pipeline
         response = rag_pipeline.query(
             query=q,
+            session_id=session_id,
+            conversation_memory=rag_pipeline.conversation_memory,
             tags=tags,
             start_date=start_date,
             end_date=end_date
         )
+        
+        # Add session ID to response
+        response["session_id"] = session_id
         
         logger.info("Query processed successfully")
         return response
@@ -159,8 +170,8 @@ async def generate_reflection(request: ReflectionRequest):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
-        "main:app",
+        app,
         host=config["api"]["host"],
         port=config["api"]["port"],
-        reload=config["api"]["debug"]
+        reload=False  # Explicitly disable reload
     ) 
