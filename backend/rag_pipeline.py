@@ -24,14 +24,39 @@ class RAGPipeline:
         self.client = OpenAI()
         self.logger = logging.getLogger(__name__)
         self.document_store = {}  # Initialize empty document store
+        self.doc_embeddings = {}  # Initialize empty embeddings store
         
         # Initialize embeddings - OpenAI only
         self.embed = self._embed_openai
         self.batch_size = 500  # Increased batch size for OpenAI API
-            
-        # Initialize FAISS index
+        
+        # Initialize vector store configuration
+        vector_store_config = config.get("vector_store", {})
+        self.dimension = vector_store_config.get("dimension", 1536)  # OpenAI's default dimension
+        
+        # Initialize vector store paths with proper Windows path handling
+        self.index_path = Path(vector_store_config.get("index_path", "data/vector_store/faiss.index")).resolve()
+        self.embeddings_path = Path(os.path.join(os.path.dirname(str(self.index_path)), "embeddings.json"))
+        
+        # Create directory if it doesn't exist
+        self.index_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Try loading existing index first
+        if self.index_path.exists() and self.embeddings_path.exists():
+            try:
+                self.logger.info(f"Loading existing index from {self.index_path}")
+                self.index = faiss.read_index(str(self.index_path))
+                with open(self.embeddings_path, 'r') as f:
+                    self.doc_embeddings = json.load(f)
+                self.logger.info(f"Successfully loaded index with {self.index.ntotal} vectors")
+                return
+            except Exception as e:
+                self.logger.error(f"Failed to load existing index: {str(e)}")
+                self.logger.info("Will try loading from temp embeddings")
+        
+        # If no existing index or loading failed, try temp embeddings
         if self._have_temp_embeddings():
-            self.logger.info("Found existing embeddings, loading them...")
+            self.logger.info("Found temporary embeddings, loading them...")
             try:
                 embeddings, documents = self._load_temp_embeddings()
                 self.logger.info(f"Loaded {len(embeddings)} embeddings")
@@ -42,15 +67,26 @@ class RAGPipeline:
                         'content': doc['content'],
                         'metadata': doc['metadata']
                     }
+                    self.doc_embeddings[str(i)] = embeddings[i].tolist()
                 
-                # Create index
+                # Create index from embeddings
                 self.index = self._create_faiss_index(embeddings)
                 self.logger.info(f"Created FAISS index with {self.index.ntotal} vectors")
+                
+                # Save the index and embeddings
+                try:
+                    self._save_index(self.index_path)
+                    with open(self.embeddings_path, 'w') as f:
+                        json.dump(self.doc_embeddings, f)
+                    self.logger.info("Saved index and embeddings to disk")
+                except Exception as e:
+                    self.logger.warning(f"Failed to save index to disk: {str(e)}")
             except Exception as e:
-                self.logger.error(f"Failed to load embeddings: {str(e)}")
-                self.logger.info("Creating empty index instead")
+                self.logger.error(f"Failed to load temp embeddings: {str(e)}")
+                self.logger.info("Creating empty index")
                 self.index = self._init_faiss()
         else:
+            self.logger.info("No existing or temporary embeddings found, creating empty index")
             self.index = self._init_faiss()
             
         # Initialize graph retriever
@@ -59,29 +95,12 @@ class RAGPipeline:
         self.logger.info("Graph retriever initialized")
         
         # Initialize conversation memory
+        memory_config = config.get("conversation_memory", {})
         self.conversation_memory = ConversationMemory(
-            storage_dir=config.get("conversation_storage_dir", "data/conversations"),
-            max_history=config.get("max_conversation_history", 10),
-            context_window=config.get("conversation_context_window", 5)
+            storage_dir=memory_config.get("storage_dir", "data/conversations"),
+            max_history=memory_config.get("max_history", 10),
+            context_window=memory_config.get("context_window", 5)
         )
-        
-        # Initialize document store
-        self.docs_dir = Path(config["docs_dir"])
-        self.docs_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Initialize vector store
-        self.index_path = Path(config["index_path"])
-        self.embeddings_path = Path(config["embeddings_path"])
-        
-        if self.index_path.exists() and self.embeddings_path.exists():
-            # Load existing index and embeddings
-            self.index = faiss.read_index(str(self.index_path))
-            with open(self.embeddings_path, 'r') as f:
-                self.doc_embeddings = json.load(f)
-        else:
-            # Initialize new index and embeddings
-            self.index = faiss.IndexFlatL2(1536)  # OpenAI embedding dimension
-            self.doc_embeddings = {}
 
     def _init_faiss(self) -> faiss.Index:
         """Initialize FAISS index"""
@@ -165,51 +184,41 @@ class RAGPipeline:
     def _save_index(self, index_path: Path) -> None:
         """Save FAISS index to disk with proper Windows file handling"""
         try:
-            # Create a temporary file in the same directory as the target
-            temp_path = index_path.parent / f"{index_path.stem}_temp{index_path.suffix}"
-            self.logger.info(f"Using temporary file: {temp_path}")
-            
-            # Remove temp file if it exists
-            if temp_path.exists():
-                temp_path.unlink()
-            
-            # Save to temporary file
-            faiss.write_index(self.index, str(temp_path))
-            
-            # If target file exists, try to remove it
-            try:
-                if index_path.exists():
-                    index_path.unlink()
-            except Exception as e:
-                self.logger.error(f"Could not remove existing index, trying to force: {str(e)}")
+            # Create a temporary file in a temp directory
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.index') as temp_file:
+                temp_path = Path(temp_file.name)
+                self.logger.info(f"Using temporary file: {temp_path}")
+                
+                # Save to temporary file
+                faiss.write_index(self.index, str(temp_path))
+                
+                # Close the file to ensure it's written
+                temp_file.close()
+                
                 try:
-                    # Try to force remove using os.remove
-                    os.remove(str(index_path))
-                except Exception as e2:
-                    self.logger.error(f"Could not force remove index: {str(e2)}")
-                    # Clean up temp file
-                    temp_path.unlink()
-                    raise
-            
-            try:
-                # Rename temporary file to target
-                os.replace(str(temp_path), str(index_path))
-                self.logger.info(f"Successfully saved index with {self.index.ntotal} vectors")
-            except Exception as e:
-                self.logger.error(f"Failed to rename temp file: {str(e)}")
-                # Clean up temp file
-                if temp_path.exists():
-                    temp_path.unlink()
-                raise
-            
+                    # Try to move the temp file to the target location
+                    # Using shutil.move which handles cross-device moves
+                    shutil.move(str(temp_path), str(index_path))
+                    self.logger.info(f"Successfully saved index with {self.index.ntotal} vectors")
+                except Exception as e:
+                    self.logger.error(f"Failed to move index file: {str(e)}")
+                    # Try to copy instead of move as fallback
+                    try:
+                        shutil.copy2(str(temp_path), str(index_path))
+                        self.logger.info(f"Successfully copied index with {self.index.ntotal} vectors")
+                    except Exception as e2:
+                        self.logger.error(f"Failed to copy index file: {str(e2)}")
+                        raise
+                finally:
+                    # Clean up temp file if it still exists
+                    try:
+                        if temp_path.exists():
+                            temp_path.unlink()
+                    except:
+                        pass
+                        
         except Exception as e:
             self.logger.error(f"Failed to save index: {str(e)}")
-            # Clean up temporary file if it exists
-            if 'temp_path' in locals() and temp_path.exists():
-                try:
-                    temp_path.unlink()
-                except:
-                    pass
             raise
 
     def _save_embeddings_temp(self, embeddings: List[np.ndarray], documents: List[Dict[str, Any]]) -> Path:
@@ -267,83 +276,72 @@ class RAGPipeline:
             self.logger.info(f"Indexing {len(documents)} documents")
             start_time = time.time()
             
-            # STEP 1: Generate/Load Embeddings
-            if self._have_temp_embeddings():
-                self.logger.info("Found existing embeddings in temp storage")
-                combined_embeddings, processed_docs = self._load_temp_embeddings()
-                self.logger.info(f"Loaded {len(combined_embeddings)} embeddings from temp storage")
-            else:
-                self.logger.info("Generating new embeddings...")
-                # Split documents into batches
-                num_batches = math.ceil(len(documents) / self.batch_size)
-                batches = [
-                    documents[i:i + self.batch_size]
-                    for i in range(0, len(documents), self.batch_size)
-                ]
-                
-                # Process batches in parallel
-                all_embeddings = []
-                processed_docs = []
-                with ThreadPoolExecutor(max_workers=4) as executor:
-                    futures = []
-                    for i, batch in enumerate(batches):
-                        future = executor.submit(self._process_batch, batch, i)
-                        futures.append(future)
-                    
-                    # Track progress with estimated time
-                    with tqdm(total=len(batches), desc="Generating embeddings") as pbar:
-                        for future in as_completed(futures):
-                            embeddings, docs = future.result()
-                            if embeddings is not None:
-                                all_embeddings.append(embeddings)
-                                processed_docs.extend(docs)
-                            pbar.update(1)
-                            
-                            # Update ETA
-                            elapsed = time.time() - start_time
-                            docs_per_sec = len(processed_docs) / elapsed
-                            remaining_docs = len(documents) - len(processed_docs)
-                            eta_seconds = remaining_docs / docs_per_sec if docs_per_sec > 0 else 0
-                            pbar.set_postfix({
-                                'docs/s': f'{docs_per_sec:.1f}',
-                                'eta': f'{timedelta(seconds=int(eta_seconds))}'
-                            })
-                
-                # Save embeddings to temporary storage
-                if all_embeddings:
-                    self.logger.info("Saving embeddings to temporary storage...")
-                    combined_embeddings = np.vstack(all_embeddings)
-                    temp_dir = self._save_embeddings_temp([combined_embeddings], processed_docs)
+            # Process documents in batches
+            num_batches = math.ceil(len(documents) / self.batch_size)
+            batches = [
+                documents[i:i + self.batch_size]
+                for i in range(0, len(documents), self.batch_size)
+            ]
             
-            # STEP 2: Create FAISS Index
-            if self.config["vector_store"]["type"] == "faiss":
-                try:
-                    self.logger.info("Creating FAISS index in memory...")
-                    self.index = self._create_faiss_index(combined_embeddings)
-                    self.logger.info(f"Successfully created index with {self.index.ntotal} vectors")
-                    
-                    # STEP 3: Save Index (optional)
-                    try:
-                        index_path = Path(self.config["vector_store"]["index_path"]).resolve()
-                        self.logger.info(f"Attempting to save index to {index_path}")
+            # Process batches in parallel
+            all_embeddings = []
+            processed_docs = []
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                futures = []
+                for i, batch in enumerate(batches):
+                    future = executor.submit(self._process_batch, batch, i)
+                    futures.append(future)
+                
+                # Track progress with estimated time
+                with tqdm(total=len(batches), desc="Generating embeddings") as pbar:
+                    for future in as_completed(futures):
+                        embeddings, docs = future.result()
+                        if embeddings is not None:
+                            all_embeddings.append(embeddings)
+                            processed_docs.extend(docs)
+                        pbar.update(1)
                         
-                        # Create directory if it doesn't exist
-                        index_dir = index_path.parent
-                        index_dir.mkdir(parents=True, exist_ok=True)
-                        
-                        # Try to save index
-                        faiss.write_index(self.index, str(index_path))
-                        self.logger.info("Successfully saved index to disk")
-                    except Exception as e:
-                        self.logger.warning(f"Could not save index to disk: {str(e)}")
-                        self.logger.info("Will continue with in-memory index")
-                        
-                except Exception as e:
-                    self.logger.error(f"Failed to create FAISS index: {str(e)}")
-                    raise
+                        # Update ETA
+                        elapsed = time.time() - start_time
+                        docs_per_sec = len(processed_docs) / elapsed if elapsed > 0 else 0
+                        remaining_docs = len(documents) - len(processed_docs)
+                        eta_seconds = remaining_docs / docs_per_sec if docs_per_sec > 0 else 0
+                        pbar.set_postfix({
+                            'docs/s': f'{docs_per_sec:.1f}',
+                            'eta': f'{timedelta(seconds=int(eta_seconds))}'
+                        })
+            
+            if not all_embeddings:
+                self.logger.error("No embeddings generated")
+                return
+                
+            # Combine all embeddings
+            combined_embeddings = np.vstack(all_embeddings)
+            
+            # Create new index
+            self.index = self._create_faiss_index(combined_embeddings)
+            
+            # Update document store and embeddings
+            self.document_store.clear()
+            self.doc_embeddings.clear()
+            for i, doc in enumerate(processed_docs):
+                self.document_store[str(i)] = {
+                    'content': doc['content'],
+                    'metadata': doc['metadata']
+                }
+                self.doc_embeddings[str(i)] = combined_embeddings[i].tolist()
+            
+            # Save index and embeddings
+            try:
+                self._save_index(self.index_path)
+                with open(self.embeddings_path, 'w') as f:
+                    json.dump(self.doc_embeddings, f)
+                self.logger.info("Saved index and embeddings to disk")
+            except Exception as e:
+                self.logger.warning(f"Failed to save to disk: {str(e)}")
             
             elapsed = time.time() - start_time
-            docs_per_sec = len(documents) / elapsed
+            docs_per_sec = len(documents) / elapsed if elapsed > 0 else 0
             self.logger.info(f"Indexing complete in {timedelta(seconds=int(elapsed))} ({docs_per_sec:.1f} docs/s)")
             
         except Exception as e:
@@ -355,10 +353,13 @@ class RAGPipeline:
         query: str,
         k: int = 5,
         session_id: Optional[str] = None,
-        conversation_memory: Optional[ConversationMemory] = None
+        conversation_memory: Optional[ConversationMemory] = None,
+        tags: Optional[List[str]] = None,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None
     ) -> Dict[str, Any]:
         """
-        Query the RAG pipeline with conversation memory
+        Query the RAG pipeline with conversation memory and filtering options
         """
         try:
             # Use instance conversation memory if none provided
@@ -369,7 +370,7 @@ class RAGPipeline:
                 session_id = str(int(time.time()))
             
             # Get conversation context
-            conversation_context = conversation_memory.get_context(session_id) if session_id else ""
+            conversation_context = conversation_memory.get_context_window(session_id) if session_id else ""
             
             # Perform semantic search
             query_vector = self.embed([query])[0]
@@ -387,12 +388,42 @@ class RAGPipeline:
                     'score': float(D[0][i])
                 })
             
+            # Apply tag filtering if specified
+            if tags:
+                self.logger.info(f"Filtering results by tags: {tags}")
+                results = [
+                    result for result in results
+                    if 'tags' in result['metadata'] and 
+                    any(tag in result['metadata']['tags'] for tag in tags)
+                ]
+            
+            # Apply date filtering if specified
+            if start_date or end_date:
+                self.logger.info(f"Filtering results by date range: {start_date} to {end_date}")
+                filtered_results = []
+                for result in results:
+                    if 'created' in result['metadata']:
+                        created_date = datetime.fromisoformat(result['metadata']['created'])
+                        if start_date and created_date < start_date:
+                            continue
+                        if end_date and created_date > end_date:
+                            continue
+                        filtered_results.append(result)
+                results = filtered_results
+            
+            # Get symbolic search results if tags or dates specified
+            if tags or start_date or end_date:
+                symbolic_results = self._symbolic_search(tags, start_date, end_date)
+                # Combine semantic and symbolic results
+                if symbolic_results:
+                    results = self._combine_results(results, symbolic_results)
+            
             # Get graph context
             graph_results = self.graph_retriever.get_context(results)
             
             # Combine results
             context = "\n\n".join([
-                f"Source {i+1}:\n{result['content']}\nConnections: {', '.join(graph_results.get(result['metadata']['path'], []))}"
+                f"Source {i+1}:\n{result['content']}\nConnections: {', '.join(graph_results.get(result['metadata'].get('path', ''), []))}"
                 for i, result in enumerate(results)
             ])
             
