@@ -21,8 +21,9 @@ wheels/
 *.egg
 
 # Virtual Environment
+.env
+.venv
 venv/
-env/
 ENV/
 
 # IDE
@@ -30,12 +31,25 @@ ENV/
 .vscode/
 *.swp
 *.swo
+.cursor/
 
-# Project specific
-.env
-data/vector_store/
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+test_vault/
+test_data/
+
+# Logs
 logs/
 *.log
+
+# Data and temporary files
+data/temp/
+data/vector_store/*
+!data/vector_store/.gitkeep
+data/conversations/*
+!data/conversations/.gitkeep
 
 # Obsidian
 .obsidian/
