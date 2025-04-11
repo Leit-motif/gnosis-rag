@@ -1,4 +1,4 @@
-# Gnosis-RAG: Obsidian ChatGPT Plugin
+# Obsidian ChatGPT Plugin
 
 A powerful ChatGPT plugin that enables natural conversation with your Obsidian vault using hybrid RAG (Retrieval Augmented Generation). Combine semantic search with Obsidian's rich linking and tagging features to explore your personal knowledge system.
 
@@ -9,7 +9,7 @@ A powerful ChatGPT plugin that enables natural conversation with your Obsidian v
 - **Flexible Embedding Models**: OpenAI or local models (e.g., all-MiniLM, instructor-xl)
 - **Rich Query Capabilities**: Search by natural language, tags, and date ranges
 - **Theme Analysis**: Discover recurring patterns and themes in your notes
-- **Reflective Agents**: Generate insights from different perspectives (Gnosis, Anima, Archivist)
+- **Conversation Memory**: Maintains context across chat sessions for more coherent interactions
 
 ## Prerequisites
 
@@ -22,8 +22,8 @@ A powerful ChatGPT plugin that enables natural conversation with your Obsidian v
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/gnosis-rag.git
-cd gnosis-rag
+git clone https://github.com/yourusername/obsidian-chatgpt-plugin.git
+cd obsidian-chatgpt-plugin
 ```
 
 2. Create a virtual environment:
@@ -70,55 +70,59 @@ ngrok http 8000
 
 ## API Endpoints
 
-### GET /query
-Query your vault with natural language:
+### POST /chat
+Chat with your vault using natural language:
 ```bash
-curl "http://localhost:8000/query?q=What+did+I+learn+about+psychology&tags=learning,psychology&date_range=last_30_days"
-```
-
-### GET /themes
-Analyze recurring themes:
-```bash
-curl "http://localhost:8000/themes"
-```
-
-### POST /reflect
-Generate reflections:
-```bash
-curl -X POST "http://localhost:8000/reflect" \
+curl -X POST "http://localhost:8000/chat" \
   -H "Content-Type: application/json" \
-  -d '{"mode": "weekly", "agent": "gnosis"}'
+  -d '{
+    "messages": [
+      {"role": "user", "content": "What did I learn about psychology?"}
+    ],
+    "filters": {
+      "tags": ["learning", "psychology"],
+      "date_range": "last_30_days"
+    }
+  }'
+```
+
+### GET /health
+Check the service health:
+```bash
+curl "http://localhost:8000/health"
 ```
 
 ## Configuration
 
 ### Embedding Models
 
-Choose between:
-- OpenAI (text-embedding-3-small)
-- Local models:
-  - all-MiniLM-L6-v2 (fast, lightweight)
-  - instructor-xl (more accurate)
+The plugin currently uses:
+- OpenAI (text-embedding-3-small) for embeddings
+- GPT-4 for chat completions
 
-### Vector Stores
+Configure in `.env`:
+```env
+OPENAI_API_KEY=your_api_key_here
+OBSIDIAN_VAULT_PATH=/path/to/your/vault
+```
 
-Available options:
-- FAISS (default, in-memory)
-- Chroma (persistent, metadata-rich)
-- Qdrant (distributed, scalable)
+### Vector Store
 
-Configure in `config.yaml`:
+The plugin uses FAISS as the vector store for efficient similarity search. The index is automatically built and updated when the service starts.
+
+Configure paths in `config.yaml`:
 ```yaml
-vector_store:
-  type: "faiss"  # or "chroma" or "qdrant"
-  # ... other settings ...
+vault:
+  path: ${OBSIDIAN_VAULT_PATH}
+  index_path: "./data/faiss_index"
+  cache_path: "./data/cache"
 ```
 
 ## Development
 
 ### Project Structure
 ```
-gnosis-rag/
+obsidian-chatgpt-plugin/
 ├── backend/
 │   ├── main.py                 # FastAPI app
 │   ├── rag_pipeline.py         # Core RAG logic
@@ -138,26 +142,28 @@ pytest backend/tests/
 ## Deployment
 
 ### Local Development
-Use ngrok for tunneling:
+1. Start the FastAPI server:
+```bash
+uvicorn backend.main:app --reload
+```
+
+2. Use ngrok for tunneling:
 ```bash
 ngrok http 8000
 ```
 
-### Production
-Deploy to your preferred platform:
-- Render
-- Fly.io
-- Your own VPS
+3. Install in ChatGPT:
+- Go to ChatGPT Plugin Store
+- Choose "Develop your own plugin"
+- Enter your ngrok URL
+- Follow the installation prompts
 
-Update `plugin/ai-plugin.json` with your production URL.
+### Production
+Deploy to your preferred platform and update `plugin/ai-plugin.json` with your production URL.
 
 ## Contributing
 
-1. Fork the repository
-2. Create a feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a Pull Request
+Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## License
 
@@ -167,4 +173,4 @@ MIT License - see LICENSE file for details
 
 - OpenAI for ChatGPT Plugin SDK
 - Obsidian for the amazing note-taking app
-- FAISS, Chroma, and Qdrant teams 
+- Facebook Research for FAISS 
