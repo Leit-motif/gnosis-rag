@@ -2,7 +2,7 @@ from typing import List, Optional, Dict, Any, Tuple
 import os
 import faiss
 import numpy as np
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from openai import OpenAI
 from tenacity import retry, stop_after_attempt, wait_exponential
 import logging
@@ -21,7 +21,12 @@ import json
 class RAGPipeline:
     def __init__(self, config: Dict[str, Any]):
         self.config = config
-        self.client = OpenAI()
+        # Initialize OpenAI client with API key from environment
+        api_key = os.environ.get("OPENAI_API_KEY")
+        if not api_key:
+            raise ValueError("OPENAI_API_KEY environment variable is not set")
+        # Simple initialization with only the API key
+        self.client = OpenAI(api_key=api_key)
         self.logger = logging.getLogger(__name__)
         self.document_store = {}  # Initialize empty document store
         self.doc_embeddings = {}  # Initialize empty embeddings store
@@ -41,6 +46,7 @@ class RAGPipeline:
         # Create directory if it doesn't exist
         self.index_path.parent.mkdir(parents=True, exist_ok=True)
         
+        index_loaded_from_disk = False
         # Try loading existing index first
         if self.index_path.exists() and self.embeddings_path.exists():
             try:
@@ -49,52 +55,54 @@ class RAGPipeline:
                 with open(self.embeddings_path, 'r') as f:
                     self.doc_embeddings = json.load(f)
                 self.logger.info(f"Successfully loaded index with {self.index.ntotal} vectors")
-                return
+                index_loaded_from_disk = True # Mark as loaded
             except Exception as e:
                 self.logger.error(f"Failed to load existing index: {str(e)}")
                 self.logger.info("Will try loading from temp embeddings")
         
-        # If no existing index or loading failed, try temp embeddings
-        if self._have_temp_embeddings():
-            self.logger.info("Found temporary embeddings, loading them...")
-            try:
-                embeddings, documents = self._load_temp_embeddings()
-                self.logger.info(f"Loaded {len(embeddings)} embeddings")
-                
-                # Store documents
-                for i, doc in enumerate(documents):
-                    self.document_store[str(i)] = {
-                        'content': doc['content'],
-                        'metadata': doc['metadata']
-                    }
-                    self.doc_embeddings[str(i)] = embeddings[i].tolist()
-                
-                # Create index from embeddings
-                self.index = self._create_faiss_index(embeddings)
-                self.logger.info(f"Created FAISS index with {self.index.ntotal} vectors")
-                
-                # Save the index and embeddings
+        # If index wasn't loaded from disk, try temp or create new
+        if not index_loaded_from_disk:
+            # If no existing index or loading failed, try temp embeddings
+            if self._have_temp_embeddings():
+                self.logger.info("Found temporary embeddings, loading them...")
                 try:
-                    self._save_index(self.index_path)
-                    with open(self.embeddings_path, 'w') as f:
-                        json.dump(self.doc_embeddings, f)
-                    self.logger.info("Saved index and embeddings to disk")
+                    embeddings, documents = self._load_temp_embeddings()
+                    self.logger.info(f"Loaded {len(embeddings)} embeddings")
+                    
+                    # Store documents
+                    for i, doc in enumerate(documents):
+                        self.document_store[str(i)] = {
+                            'content': doc['content'],
+                            'metadata': doc['metadata']
+                        }
+                        self.doc_embeddings[str(i)] = embeddings[i].tolist()
+                    
+                    # Create index from embeddings
+                    self.index = self._create_faiss_index(embeddings)
+                    self.logger.info(f"Created FAISS index with {self.index.ntotal} vectors")
+                    
+                    # Save the index and embeddings
+                    try:
+                        self._save_index(self.index_path)
+                        with open(self.embeddings_path, 'w') as f:
+                            json.dump(self.doc_embeddings, f)
+                        self.logger.info("Saved index and embeddings to disk")
+                    except Exception as e:
+                        self.logger.warning(f"Failed to save index to disk: {str(e)}")
                 except Exception as e:
-                    self.logger.warning(f"Failed to save index to disk: {str(e)}")
-            except Exception as e:
-                self.logger.error(f"Failed to load temp embeddings: {str(e)}")
-                self.logger.info("Creating empty index")
+                    self.logger.error(f"Failed to load temp embeddings: {str(e)}")
+                    self.logger.info("Creating empty index")
+                    self.index = self._init_faiss()
+            else:
+                self.logger.info("No existing or temporary embeddings found, creating empty index")
                 self.index = self._init_faiss()
-        else:
-            self.logger.info("No existing or temporary embeddings found, creating empty index")
-            self.index = self._init_faiss()
             
-        # Initialize graph retriever
+        # Initialize graph retriever (ALWAYS RUN THIS)
         self.graph_retriever = GraphRetriever(config["vault"]["path"])
         self.graph_retriever.build_graph()
         self.logger.info("Graph retriever initialized")
         
-        # Initialize conversation memory
+        # Initialize conversation memory (ALWAYS RUN THIS)
         memory_config = config.get("conversation_memory", {})
         self.conversation_memory = ConversationMemory(
             storage_dir=memory_config.get("storage_dir", "data/conversations"),
@@ -371,61 +379,117 @@ class RAGPipeline:
             
             # Get conversation context
             conversation_context = conversation_memory.get_context_window(session_id) if session_id else ""
+            self.logger.info(f"Session [{session_id}] Context window retrieved.") # Log context retrieval
             
             # Perform semantic search
+            self.logger.info(f"Session [{session_id}] Performing semantic search for: '{query}'") # Log query
             query_vector = self.embed([query])[0]
             D, I = self.index.search(query_vector.reshape(1, -1), k)
+            self.logger.info(f"Session [{session_id}] Raw semantic search IDs: {I.tolist()}, Scores: {D.tolist()}") # Log raw results
             
             # Get results
-            results = []
+            semantic_results = []
             for i, idx in enumerate(I[0]):
                 if idx == -1 or str(idx) not in self.document_store:
                     continue
                 doc = self.document_store[str(idx)]
-                results.append({
+                semantic_results.append({
                     'content': doc['content'],
                     'metadata': doc['metadata'],
                     'score': float(D[0][i])
                 })
+            self.logger.info(f"Session [{session_id}] Initial semantic results count: {len(semantic_results)}") # Log initial count
             
+            # --- Filtering Logic (Tags and Dates) ---
+            filtered_results = semantic_results
             # Apply tag filtering if specified
             if tags:
-                self.logger.info(f"Filtering results by tags: {tags}")
-                results = [
-                    result for result in results
+                self.logger.info(f"Session [{session_id}] Filtering results by tags: {tags}")
+                filtered_results = [
+                    result for result in filtered_results
                     if 'tags' in result['metadata'] and 
-                    any(tag in result['metadata']['tags'] for tag in tags)
+                    any(tag in result['metadata'].get('tags', []) for tag in tags)
                 ]
+                self.logger.info(f"Session [{session_id}] Results count after tag filter: {len(filtered_results)}") # Log after tag filter
             
             # Apply date filtering if specified
             if start_date or end_date:
-                self.logger.info(f"Filtering results by date range: {start_date} to {end_date}")
-                filtered_results = []
-                for result in results:
+                self.logger.info(f"Session [{session_id}] Filtering results by date range: {start_date} to {end_date}")
+                temp_results = []
+                for result in filtered_results:
                     if 'created' in result['metadata']:
-                        created_date = datetime.fromisoformat(result['metadata']['created'])
-                        if start_date and created_date < start_date:
-                            continue
-                        if end_date and created_date > end_date:
-                            continue
-                        filtered_results.append(result)
-                results = filtered_results
-            
-            # Get symbolic search results if tags or dates specified
+                        try:
+                            # Ensure created_date is offset-aware if start/end dates are
+                            created_date_str = result['metadata']['created']
+                            created_date = datetime.fromisoformat(created_date_str)
+                            
+                            # Make created_date timezone-aware if needed (assuming UTC if no tz)
+                            if created_date.tzinfo is None:
+                                created_date = created_date.replace(tzinfo=timezone.utc)
+                            if start_date and start_date.tzinfo is None:
+                                start_date = start_date.replace(tzinfo=timezone.utc)
+                            if end_date and end_date.tzinfo is None:
+                                end_date = end_date.replace(tzinfo=timezone.utc)
+
+                            # Perform comparison
+                            if start_date and created_date < start_date:
+                                continue
+                            if end_date and created_date > end_date:
+                                continue
+                            temp_results.append(result)
+                        except (ValueError, TypeError) as e:
+                            self.logger.warning(f"Could not parse date {result['metadata'].get('created')}: {e}")
+                            continue # Skip if date is invalid
+                    else:
+                         # Decide if docs without dates should be included or excluded
+                         # Let's exclude them for now if a date range is specified
+                         pass 
+                filtered_results = temp_results
+                self.logger.info(f"Session [{session_id}] Results count after date filter: {len(filtered_results)}") # Log after date filter
+
+            # Get symbolic search results (if tags or dates specified)
+            # Placeholder: Symbolic search currently returns empty
+            symbolic_results = [] 
             if tags or start_date or end_date:
-                symbolic_results = self._symbolic_search(tags, start_date, end_date)
-                # Combine semantic and symbolic results
-                if symbolic_results:
-                    results = self._combine_results(results, symbolic_results)
+                 symbolic_results = self._symbolic_search(tags, start_date, end_date)
             
-            # Get graph context
-            graph_results = self.graph_retriever.get_context(results)
+            # Combine results (Placeholder: currently just uses filtered semantic results)
+            final_results = filtered_results # Replace/augment with combined results if symbolic search is implemented
+            if symbolic_results: # Example basic combination (avoid duplicates)
+                final_results_paths = {r['metadata'].get('path') for r in final_results}
+                for sr in symbolic_results:
+                    if sr['metadata'].get('path') not in final_results_paths:
+                        final_results.append(sr)
+            self.logger.info(f"Session [{session_id}] Final results count before graph context: {len(final_results)}") # Log final count before graph
             
-            # Combine results
-            context = "\n\n".join([
-                f"Source {i+1}:\n{result['content']}\nConnections: {', '.join(graph_results.get(result['metadata'].get('path', ''), []))}"
-                for i, result in enumerate(results)
-            ])
+            # --- Get graph context using the correct method ---
+            graph_context_map = {}
+            self.logger.info("Retrieving graph context for results...")
+            for result in final_results:
+                doc_path = result['metadata'].get('path') # Assuming 'path' is in metadata
+                if doc_path:
+                    related_docs = self.graph_retriever.get_related_documents(doc_path, max_distance=1)
+                    # Store related document paths (excluding the source itself)
+                    graph_context_map[doc_path] = [rel['document'] for rel in related_docs if rel['document'] != doc_path]
+                else:
+                    self.logger.warning(f"Document missing 'path' in metadata: {result.get('metadata')}")
+            self.logger.info(f"Graph context map: {graph_context_map}")
+            # --- End Graph Context Update ---
+            
+            # Combine results for the final context string
+            context_parts = []
+            for i, result in enumerate(final_results):
+                doc_path = result['metadata'].get('path', f'doc_{i}')
+                connections = graph_context_map.get(doc_path, [])
+                connections_str = ', '.join(connections) if connections else 'None'
+                context_parts.append(
+                    f"Source {i+1} (Path: {doc_path}):\n{result['content']}\nConnections: {connections_str}"
+                )
+            context = "\n\n".join(context_parts)
+            self.logger.info(f"Session [{session_id}] Context generated for LLM (length: {len(context)}):\n"
+                            f"--- START CONTEXT ---\n"
+                            f"{context[:500]}...\n"
+                            f"--- END CONTEXT ---") # Log context sample
             
             # Build messages for chat completion
             messages = [
@@ -461,7 +525,7 @@ When referring to previous conversations, be natural and contextual in your resp
             
             return {
                 "response": response.choices[0].message.content,
-                "sources": results,
+                "sources": final_results,
                 "session_id": session_id
             }
             

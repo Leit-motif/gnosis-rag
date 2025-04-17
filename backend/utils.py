@@ -33,7 +33,7 @@ def ensure_directories(config: Dict[str, Any]) -> None:
     Creates them if they don't exist.
     """
     directories = [
-        config["vector_store"]["index_path"],
+        os.path.dirname(config["vector_store"]["index_path"]),
         os.path.dirname(config["logging"]["file"]),
     ]
     

@@ -50,6 +50,11 @@ except Exception as e:
     logger.error(f"Failed to initialize: {str(e)}")
     raise
 
+# Add a simple health check endpoint
+@app.get("/health")
+async def health_check():
+    return {"status": "ok"}
+
 @app.post("/index")
 async def index_vault():
     """

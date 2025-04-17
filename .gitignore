@@ -25,6 +25,7 @@ wheels/
 .venv
 venv/
 ENV/
+test_env/
 
 # IDE
 .idea/
@@ -46,10 +47,18 @@ logs/
 
 # Data and temporary files
 data/temp/
-data/vector_store/*
+data/vector_store/faiss.index
+data/vector_store/embeddings.json
 !data/vector_store/.gitkeep
 data/conversations/*
 !data/conversations/.gitkeep
+
+# Temporary Test Scripts
+test_openai.py
+test_openai_fresh.py
+clean_test.py
+minimal_test.py
+inspect_openai.py
 
 # Obsidian
 .obsidian/
