@@ -4,6 +4,10 @@ from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime, timedelta
 import logging
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse, JSONResponse
+import os
+from pathlib import Path
 
 from .rag_pipeline import RAGPipeline
 from .obsidian_loader_v2 import ObsidianLoaderV2
@@ -36,6 +40,35 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Plugin file paths
+plugin_dir = Path(__file__).parent.parent / "plugin"
+openapi_path = plugin_dir / "openapi.yaml"
+plugin_json_path = plugin_dir / "ai-plugin.json"
+
+# Route to serve OpenAPI specification
+@app.get("/openapi.yaml", include_in_schema=False)
+async def get_openapi_yaml():
+    return FileResponse(openapi_path, media_type="text/yaml")
+
+# Route to serve plugin manifest
+@app.get("/.well-known/ai-plugin.json", include_in_schema=False)
+async def get_plugin_manifest():
+    return FileResponse(plugin_json_path, media_type="application/json")
+
+# Routes for other required plugin files
+@app.get("/logo.png", include_in_schema=False)
+async def get_logo():
+    # For now, we'll just return a placeholder message
+    # In a production environment, we would serve an actual logo file
+    return JSONResponse(
+        content={"message": "Logo placeholder. In production, this would be an image file."},
+        status_code=200
+    )
+
+@app.get("/legal", include_in_schema=False)
+async def get_legal():
+    return {"terms_of_use": "This is a prototype plugin. Use at your own risk."}
 
 # Initialize components
 try:
