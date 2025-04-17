@@ -1,16 +1,23 @@
 openapi: 3.0.1
 info:
-  title: Gnosis Plugin
-  description: A ChatGPT plugin for querying and reflecting on your Obsidian vault using hybrid RAG
+  title: Obsidian Vault Assistant
+  description: |
+    Access and interact with your Obsidian vault through ChatGPT.
+    This plugin enables natural language querying of your personal knowledge base, 
+    analysis of themes across your notes, and generation of reflections.
   version: 1.0.0
 servers:
-  - url: http://localhost:8000
-    description: Local development server
+  - url: https://4b95-2600-1700-966e-400-59d-5bc8-77b-6d55.ngrok-free.app
+    description: Development server
 paths:
   /query:
     get:
       operationId: queryVault
-      summary: Query your personal knowledge base
+      summary: Query your Obsidian vault
+      description: |
+        Search your Obsidian vault using natural language queries.
+        Results can be filtered by tags or date ranges.
+        The response includes a synthesized answer and the source documents.
       parameters:
         - name: q
           in: query
@@ -18,6 +25,11 @@ paths:
           schema:
             type: string
           required: true
+        - name: session_id
+          in: query
+          description: Optional session ID for conversation continuity
+          schema:
+            type: string
         - name: tags
           in: query
           description: Optional list of tags to filter by
@@ -27,7 +39,7 @@ paths:
               type: string
         - name: date_range
           in: query
-          description: Optional date range filter (e.g. "last_30_days")
+          description: Optional date range filter (e.g. "last_30_days", "last_week", "this_month")
           schema:
             type: string
       responses:
@@ -53,10 +65,34 @@ paths:
                         score:
                           type: number
                           format: float
+                  session_id:
+                    type: string
+                    description: Session ID for this conversation
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
   /themes:
     get:
       operationId: getThemes
       summary: Get most discussed themes and patterns
+      description: |
+        Analyze your vault to identify recurring themes and patterns.
+        This provides insight into the topics you write about most frequently.
       responses:
         '200':
           description: Thematic analysis
@@ -82,6 +118,9 @@ paths:
     post:
       operationId: generateReflection
       summary: Generate reflections over time
+      description: |
+        Generate reflections based on your journal entries.
+        You can specify the timeframe and the perspective.
       requestBody:
         required: true
         content:
@@ -112,4 +151,40 @@ paths:
                     items:
                       type: string
                   time_period:
-                    type: string 
+                    type: string
+  /health:
+    get:
+      operationId: healthCheck
+      summary: Check the health of the API
+      description: Simple health check to ensure the API is running
+      responses:
+        '200':
+          description: Health status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+  /index:
+    post:
+      operationId: indexVault
+      summary: Index the Obsidian vault
+      description: |
+        Index the Obsidian vault content into the vector store.
+        This needs to be called before querying if the index does not exist.
+      responses:
+        '200':
+          description: Indexing result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  message:
+                    type: string
+                  document_count:
+                    type: integer 
