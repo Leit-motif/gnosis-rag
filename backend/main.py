@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Query, HTTPException
+from fastapi import FastAPI, Query, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
@@ -8,6 +8,9 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 import os
 from pathlib import Path
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 from .rag_pipeline import RAGPipeline
 from .obsidian_loader_v2 import ObsidianLoaderV2
@@ -26,11 +29,19 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Initialize rate limiter
+limiter = Limiter(key_func=get_remote_address)
+
 app = FastAPI(
     title="Gnosis RAG API",
     description="API for querying and analyzing Obsidian vaults using hybrid RAG",
     version="1.0.0"
 )
+
+# State management for the limiter
+app.state.limiter = limiter
+# Add the exception handler for rate limit exceeded
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Add CORS middleware
 app.add_middleware(
@@ -130,7 +141,9 @@ class ReflectionRequest(BaseModel):
     agent: str
 
 @app.get("/query")
+@limiter.limit("10/minute")
 async def query_vault(
+    request: Request,
     q: str,
     session_id: Optional[str] = Query(None),
     tags: Optional[List[str]] = Query(None),
@@ -183,7 +196,8 @@ async def query_vault(
         )
 
 @app.get("/themes")
-async def get_themes():
+@limiter.limit("5/minute")
+async def get_themes(request: Request):
     try:
         logger.info("Analyzing themes...")
         themes = rag_pipeline.analyze_themes()
@@ -193,12 +207,13 @@ async def get_themes():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/reflect")
-async def generate_reflection(request: ReflectionRequest):
+@limiter.limit("5/minute")
+async def generate_reflection(request_data: ReflectionRequest, request: Request):
     try:
-        logger.info(f"Generating {request.mode} reflection with {request.agent} agent...")
+        logger.info(f"Generating {request_data.mode} reflection with {request_data.agent} agent...")
         reflection = rag_pipeline.generate_reflection(
-            mode=request.mode,
-            agent=request.agent
+            mode=request_data.mode,
+            agent=request_data.agent
         )
         return reflection
     except Exception as e:
