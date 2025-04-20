@@ -54,10 +54,36 @@ class RAGPipeline:
                 self.index = faiss.read_index(str(self.index_path))
                 with open(self.embeddings_path, 'r') as f:
                     self.doc_embeddings = json.load(f)
-                self.logger.info(f"Successfully loaded index with {self.index.ntotal} vectors")
+                
+                # Populate document_store from loaded embeddings metadata
+                # Assuming embeddings.json structure is { "id": {"content": "...", "metadata": {...}} }
+                # If not, this needs adjustment based on actual embeddings.json structure.
+                # Let's assume for now doc_embeddings stores { "id": embedding_vector_list } 
+                # and we need a separate file or mechanism to get content/metadata.
+                # 
+                # *** Revision: Based on index_documents, embeddings.json looks like { "id": vector }
+                # *** and document_store needs { "id": {"content": ..., "metadata": ...} }
+                # *** The current code DOES NOT save content/metadata persistently alongside embeddings.json!
+                # *** We need to save self.document_store to a file as well.
+                # 
+                # Let's save document_store to document_store.json during index_documents
+                # and load it here.
+                
+                document_store_path = self.embeddings_path.parent / "document_store.json"
+                if document_store_path.exists():
+                    self.logger.info(f"Loading document store from {document_store_path}")
+                    with open(document_store_path, 'r') as f:
+                        self.document_store = json.load(f)
+                        # Ensure keys are strings if Faiss IDs are used as keys directly
+                        self.document_store = {str(k): v for k, v in self.document_store.items()} 
+                else:
+                     self.logger.warning(f"Document store file not found at {document_store_path}. Document content will be unavailable unless re-indexed.")
+                     self.document_store = {} # Ensure it's initialized if file not found
+                
+                self.logger.info(f"Successfully loaded index with {self.index.ntotal} vectors and associated data.")
                 index_loaded_from_disk = True # Mark as loaded
             except Exception as e:
-                self.logger.error(f"Failed to load existing index: {str(e)}")
+                self.logger.error(f"Failed to load existing index or document store: {str(e)}")
                 self.logger.info("Will try loading from temp embeddings")
         
         # If index wasn't loaded from disk, try temp or create new
@@ -86,7 +112,11 @@ class RAGPipeline:
                         self._save_index(self.index_path)
                         with open(self.embeddings_path, 'w') as f:
                             json.dump(self.doc_embeddings, f)
-                        self.logger.info("Saved index and embeddings to disk")
+                        # Save the document store as well
+                        document_store_path = self.embeddings_path.parent / "document_store.json"
+                        with open(document_store_path, 'w') as f:
+                            json.dump(self.document_store, f)
+                        self.logger.info("Saved index, embeddings, and document store to disk")
                     except Exception as e:
                         self.logger.warning(f"Failed to save index to disk: {str(e)}")
                 except Exception as e:
@@ -344,7 +374,11 @@ class RAGPipeline:
                 self._save_index(self.index_path)
                 with open(self.embeddings_path, 'w') as f:
                     json.dump(self.doc_embeddings, f)
-                self.logger.info("Saved index and embeddings to disk")
+                # Save the document store as well
+                document_store_path = self.embeddings_path.parent / "document_store.json"
+                with open(document_store_path, 'w') as f:
+                    json.dump(self.document_store, f)
+                self.logger.info("Saved index, embeddings, and document store to disk")
             except Exception as e:
                 self.logger.warning(f"Failed to save to disk: {str(e)}")
             
