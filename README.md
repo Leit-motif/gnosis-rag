@@ -10,13 +10,14 @@ A powerful ChatGPT plugin that enables natural conversation with your Obsidian v
 - **Rich Query Capabilities**: Search by natural language, tags, and date ranges
 - **Theme Analysis**: Discover recurring patterns and themes in your notes
 - **Conversation Memory**: Maintains context across chat sessions for more coherent interactions
+- **Save Conversations**: Save your ChatGPT conversations directly to your daily notes
 
 ## Prerequisites
 
 - Python 3.8+
 - An OpenAI API key (for GPT-4 and embeddings)
 - An Obsidian vault
-- ngrok (for local development) or a hosting service
+- Cloudflare Tunnel (for local development with a stable URL) or a hosting service
 
 ## Installation
 
@@ -50,46 +51,78 @@ vault:
   # ... other settings ...
 ```
 
+6. Install Cloudflare Tunnel:
+   - Windows: `choco install cloudflared` or download from [Cloudflare's GitHub](https://github.com/cloudflare/cloudflared/releases)
+   - Mac: `brew install cloudflared`
+   - Linux: Check [Cloudflare documentation](https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/install-and-setup/installation) for your distribution
+
 ## Usage
+
+### Quick Start
+Use the provided startup scripts to launch both the FastAPI server and Cloudflare Tunnel:
+
+- **Windows Batch**: Double-click `start-gnosis.bat`
+- **PowerShell**: Right-click `start-gnosis.ps1` and select "Run with PowerShell"
+
+The script will start the FastAPI server and Cloudflare Tunnel in separate windows and display the URLs.
+
+### Manual Start
 
 1. Start the FastAPI server:
 ```bash
-uvicorn backend.main:app --reload
+uvicorn backend.main:app --host 0.0.0.0 --port 8000
 ```
 
-2. (Local Development) Start ngrok:
+2. Use Cloudflare Tunnel for a stable URL:
 ```bash
-ngrok http 8000
+cloudflared tunnel --url http://localhost:8000
 ```
 
 3. Install the plugin in ChatGPT:
    - Go to ChatGPT Plugin Store
    - Choose "Develop your own plugin"
-   - Enter your ngrok URL or hosted domain
+   - Enter your Cloudflare Tunnel URL
    - Follow the installation prompts
+
+## Features
+
+### Querying Your Vault
+The plugin enables natural language search of your Obsidian vault with optional filters:
+```
+"What notes did I write about machine learning in the last month?"
+```
+
+### Saving Conversations
+You can save your ChatGPT conversations to your daily notes in Obsidian:
+```
+"Save this conversation to my daily notes with the title 'Machine Learning Discussion'"
+```
+
+This creates or appends to your daily note with a formatted version of the conversation.
 
 ## API Endpoints
 
-### POST /chat
-Chat with your vault using natural language:
+### GET /query
+Query your vault using natural language:
 ```bash
-curl -X POST "http://localhost:8000/chat" \
+curl "http://localhost:8000/query?q=What%20did%20I%20learn%20about%20psychology?&tags=learning,psychology&date_range=last_30_days"
+```
+
+### POST /save_conversation
+Save the current conversation to your daily notes:
+```bash
+curl -X POST "http://localhost:8000/save_conversation" \
   -H "Content-Type: application/json" \
   -d '{
-    "messages": [
-      {"role": "user", "content": "What did I learn about psychology?"}
-    ],
-    "filters": {
-      "tags": ["learning", "psychology"],
-      "date_range": "last_30_days"
-    }
+    "session_id": "your_session_id",
+    "conversation_name": "Important Discussion"
   }'
 ```
 
-### GET /health
-Check the service health:
+### POST /index
+Index your Obsidian vault:
 ```bash
-curl "http://localhost:8000/health"
+curl -X POST "http://localhost:8000/index"
 ```
 
 ## Configuration
@@ -131,6 +164,8 @@ obsidian-chatgpt-plugin/
 ├── plugin/
 │   ├── openapi.yaml           # API specification
 │   └── ai-plugin.json         # Plugin manifest
+├── start-gnosis.bat           # Windows startup script
+├── start-gnosis.ps1           # PowerShell startup script
 └── requirements.txt
 ```
 
@@ -142,24 +177,22 @@ pytest backend/tests/
 ## Deployment
 
 ### Local Development
-1. Start the FastAPI server:
-```bash
-uvicorn backend.main:app --reload
-```
+For the simplest setup, use the provided scripts:
 
-2. Use ngrok for tunneling:
-```bash
-ngrok http 8000
-```
+- **Windows**: `start-gnosis.bat`
+- **PowerShell**: `start-gnosis.ps1`
 
-3. Install in ChatGPT:
-- Go to ChatGPT Plugin Store
-- Choose "Develop your own plugin"
-- Enter your ngrok URL
-- Follow the installation prompts
+These scripts will:
+1. Activate your virtual environment
+2. Start the FastAPI server
+3. Start Cloudflare Tunnel with a stable URL
+4. Display the URLs for both services
 
 ### Production
-Deploy to your preferred platform and update `plugin/ai-plugin.json` with your production URL.
+For a production environment, you can:
+1. Deploy to a cloud hosting service (Azure, AWS, etc.)
+2. Update `plugin/ai-plugin.json` with your production URL
+3. Share your plugin with other ChatGPT users
 
 ## Contributing
 
@@ -173,4 +206,5 @@ MIT License - see LICENSE file for details
 
 - OpenAI for ChatGPT Plugin SDK
 - Obsidian for the amazing note-taking app
-- Facebook Research for FAISS 
+- Facebook Research for FAISS
+- Cloudflare for Cloudflare Tunnel 
