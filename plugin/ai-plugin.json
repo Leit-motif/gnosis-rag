@@ -2,16 +2,16 @@
   "schema_version": "v1",
   "name_for_human": "Obsidian Vault Assistant",
   "name_for_model": "obsidian_vault_assistant",
-  "description_for_human": "Connect to your Obsidian vault to search, analyze, and discuss your personal knowledge. Query by text, tags, or dates to explore connections in your notes.",
-  "description_for_model": "This plugin enables hybrid RAG (Retrieval Augmented Generation) searches over an Obsidian vault, combining semantic search with symbolic features (tags, links, dates). You can query notes by natural language, filter by tags and date ranges, analyze themes across the vault, and generate reflections based on journal entries. When using this plugin: 1) Always offer to narrow searches with tags or date ranges if results are too broad 2) Acknowledge when you find connections between notes 3) Cite the sources from the vault that informed your answers.",
+  "description_for_human": "Connect to your Obsidian vault to search and discuss your personal knowledge. Query by text, tags, or dates to explore connections in your notes.",
+  "description_for_model": "This plugin enables hybrid RAG (Retrieval Augmented Generation) searches over an Obsidian vault, combining semantic search with symbolic features (tags, links, dates). You can query notes by natural language and filter by tags and date ranges. When using this plugin: 1) Always offer to narrow searches with tags or date ranges if results are too broad 2) Acknowledge when you find connections between notes 3) Cite the sources from the vault that informed your answers.",
   "auth": {
     "type": "none"
   },
   "api": {
     "type": "openapi",
-    "url": "https://4b95-2600-1700-966e-400-59d-5bc8-77b-6d55.ngrok-free.app/openapi.yaml"
+    "url": "https://4ffa-2600-1700-966e-400-b957-2a32-46e6-fb59.ngrok-free.app/openapi.yaml"
   },
-  "logo_url": "https://4b95-2600-1700-966e-400-59d-5bc8-77b-6d55.ngrok-free.app/logo.png",
+  "logo_url": "https://4ffa-2600-1700-966e-400-b957-2a32-46e6-fb59.ngrok-free.app/logo.png",
   "contact_email": "contact@example.com",
-  "legal_info_url": "https://4b95-2600-1700-966e-400-59d-5bc8-77b-6d55.ngrok-free.app/legal"
+  "legal_info_url": "https://4ffa-2600-1700-966e-400-b957-2a32-46e6-fb59.ngrok-free.app/legal"
 } 

@@ -1,13 +1,12 @@
-openapi: 3.0.1
+openapi: 3.1.0
 info:
   title: Obsidian Vault Assistant
   description: |
     Access and interact with your Obsidian vault through ChatGPT.
-    This plugin enables natural language querying of your personal knowledge base, 
-    analysis of themes across your notes, and generation of reflections.
+    This plugin enables natural language querying of your personal knowledge base.
   version: 1.0.0
 servers:
-  - url: https://4b95-2600-1700-966e-400-59d-5bc8-77b-6d55.ngrok-free.app
+  - url: https://4ffa-2600-1700-966e-400-b957-2a32-46e6-fb59.ngrok-free.app
     description: Development server
 paths:
   /query:
@@ -85,87 +84,6 @@ paths:
                 type: object
                 properties:
                   detail:
-                    type: string
-  /themes:
-    get:
-      operationId: getThemes
-      summary: Get most discussed themes and patterns
-      description: |
-        Analyze your vault to identify recurring themes and patterns.
-        This provides insight into the topics you write about most frequently.
-      responses:
-        '200':
-          description: Thematic analysis
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  themes:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        name:
-                          type: string
-                        frequency:
-                          type: integer
-                        related_tags:
-                          type: array
-                          items:
-                            type: string
-  /reflect:
-    post:
-      operationId: generateReflection
-      summary: Generate reflections over time
-      description: |
-        Generate reflections based on your journal entries.
-        You can specify the timeframe and the perspective.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                mode:
-                  type: string
-                  enum: [weekly, monthly]
-                  description: Reflection timeframe
-                agent:
-                  type: string
-                  enum: [gnosis, anima, archivist]
-                  description: Reflection perspective/personality
-      responses:
-        '200':
-          description: GPT-generated reflection
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  reflection:
-                    type: string
-                  insights:
-                    type: array
-                    items:
-                      type: string
-                  time_period:
-                    type: string
-  /health:
-    get:
-      operationId: healthCheck
-      summary: Check the health of the API
-      description: Simple health check to ensure the API is running
-      responses:
-        '200':
-          description: Health status
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  status:
                     type: string
   /index:
     post:

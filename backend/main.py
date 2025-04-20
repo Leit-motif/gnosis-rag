@@ -94,11 +94,7 @@ except Exception as e:
     logger.error(f"Failed to initialize: {str(e)}")
     raise
 
-# Add a simple health check endpoint
-@app.get("/health")
-async def health_check():
-    return {"status": "ok"}
-
+# Restore the original /index endpoint
 @app.post("/index")
 async def index_vault():
     """
@@ -111,11 +107,21 @@ async def index_vault():
         # Step 1: Load documents from vault
         documents = vault_loader.load_vault(config)
         logger.info(f"Loaded {len(documents)} documents from vault")
+
+        if not documents:
+             logger.warning("No documents found to index.")
+             return {
+                 "status": "warning",
+                 "message": "No documents found to index.",
+                 "document_count": 0
+             }
         
         # Step 2: Create embeddings and index documents
+        # Ensure the document structure matches what index_documents expects
         indexed_documents = [
             {
-                'id': f"{doc.metadata['source']}#{doc.metadata['chunk_id']}",
+                # Use .get() for safety in case metadata keys are missing
+                'id': f"{doc.metadata.get('source', 'unknown_source')}#{doc.metadata.get('chunk_id', 'unknown_chunk')}", 
                 'content': doc.page_content,
                 'metadata': doc.metadata
             }
@@ -130,15 +136,11 @@ async def index_vault():
             "document_count": len(documents)
         }
     except Exception as e:
-        logger.error(f"Indexing failed: {str(e)}")
+        logger.error(f"Indexing failed: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail=f"Failed to index vault: {str(e)}"
         )
-
-class ReflectionRequest(BaseModel):
-    mode: str
-    agent: str
 
 @app.get("/query")
 @limiter.limit("10/minute")
@@ -195,30 +197,17 @@ async def query_vault(
             detail=str(e)
         )
 
-@app.get("/themes")
-@limiter.limit("5/minute")
-async def get_themes(request: Request):
-    try:
-        logger.info("Analyzing themes...")
-        themes = rag_pipeline.analyze_themes()
-        return {"themes": themes}
-    except Exception as e:
-        logger.error(f"Theme analysis failed: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/reflect")
-@limiter.limit("5/minute")
-async def generate_reflection(request_data: ReflectionRequest, request: Request):
-    try:
-        logger.info(f"Generating {request_data.mode} reflection with {request_data.agent} agent...")
-        reflection = rag_pipeline.generate_reflection(
-            mode=request_data.mode,
-            agent=request_data.agent
-        )
-        return reflection
-    except Exception as e:
-        logger.error(f"Reflection generation failed: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+# Additional route to handle double slash issue with ChatGPT
+@app.get("//query")
+@limiter.limit("10/minute")
+async def query_vault_double_slash(
+    request: Request,
+    q: str,
+    session_id: Optional[str] = Query(None),
+    tags: Optional[List[str]] = Query(None),
+    date_range: Optional[str] = None
+):
+    return await query_vault(request, q, session_id, tags, date_range)
 
 if __name__ == "__main__":
     import uvicorn
