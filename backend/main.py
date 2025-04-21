@@ -1,8 +1,8 @@
 from fastapi import FastAPI, Query, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List, Optional
-from datetime import datetime, timedelta
+from typing import List, Optional, Dict, Any
+from datetime import datetime, timedelta, timezone
 import logging
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
@@ -11,6 +11,10 @@ from pathlib import Path
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+import re
+import traceback
+import time
+import json
 
 from .rag_pipeline import RAGPipeline
 from .obsidian_loader_v2 import ObsidianLoaderV2
@@ -81,6 +85,11 @@ async def get_logo():
 async def get_legal():
     return {"terms_of_use": "This is a prototype plugin. Use at your own risk."}
 
+# Model for save conversation request
+class SaveConversationRequest(BaseModel):
+    session_id: str
+    conversation_name: str
+
 # Initialize components
 try:
     logger.info("Initializing RAG pipeline...")
@@ -141,6 +150,183 @@ async def index_vault():
             status_code=500,
             detail=f"Failed to index vault: {str(e)}"
         )
+
+@app.post("/save_conversation")
+async def save_conversation(request: SaveConversationRequest):
+    """
+    Save the current conversation to the current day's page in the Obsidian vault
+    """
+    try:
+        logger.info(f"Saving conversation {request.conversation_name} from session {request.session_id}")
+        
+        # Get current date for daily note
+        today = datetime.now()
+        today_str = today.strftime("%Y-%m-%d")
+        month_str = today.strftime("%m")
+        
+        # Use the vault path from config, which already includes up to the year directory
+        vault_path = Path(config["vault"]["path"])
+        
+        # Only add the month directory since vault_path already includes up to the year
+        daily_notes_folder = vault_path / month_str
+        daily_note_filename = f"{today_str}.md"
+        
+        # Make sure directory exists
+        daily_notes_folder.mkdir(parents=True, exist_ok=True)
+        
+        daily_note_path = daily_notes_folder / daily_note_filename
+        logger.info(f"Using daily note path: {daily_note_path}")
+        
+        # Check if conversation session exists
+        if request.session_id not in rag_pipeline.conversation_memory.sessions:
+            logger.error(f"Session {request.session_id} not found")
+            raise HTTPException(
+                status_code=404,
+                detail=f"Conversation session '{request.session_id}' not found"
+            )
+            
+        # Get conversation data
+        interactions = rag_pipeline.conversation_memory.sessions[request.session_id]
+        
+        if not interactions:
+            logger.error(f"No interactions found in session {request.session_id}")
+            raise HTTPException(
+                status_code=404,
+                detail=f"No conversation data found for session '{request.session_id}'"
+            )
+            
+        # Format the conversation with blockquotes and proper Markdown
+        conversation_content = []
+        conversation_content.append(f"## My Obsidian Helper: {request.conversation_name}")
+        conversation_content.append(f"_Saved on: {today.strftime('%Y-%m-%d %H:%M:%S')}_\n")
+        
+        for i, interaction in enumerate(interactions):
+            # User message - combine first line with the user label
+            user_lines = interaction["user_message"].split('\n')
+            first_user_line = user_lines[0] if user_lines else ""
+            conversation_content.append(f"> **User ({i+1}):** {first_user_line}")
+            
+            # Add remaining lines of user message with blockquotes
+            for line in user_lines[1:]:
+                conversation_content.append(f"> {line}")
+            
+            conversation_content.append("")  # Add blank line between speakers
+            
+            # Assistant message - combine first line with the assistant label
+            assistant_lines = interaction["assistant_message"].split('\n')
+            first_assistant_line = assistant_lines[0] if assistant_lines else ""
+            conversation_content.append(f"> **Assistant ({i+1}):** {first_assistant_line}")
+            
+            # Add remaining lines of assistant message with blockquotes
+            for line in assistant_lines[1:]:
+                conversation_content.append(f"> {line}")
+            
+            conversation_content.append("")  # Add blank line after each complete exchange
+        
+        formatted_conversation = "\n".join(conversation_content)
+        
+        # If the daily note doesn't exist, create it
+        if not daily_note_path.exists():
+            logger.info(f"Creating new daily note: {daily_note_path}")
+            # Ensure the directory exists
+            daily_note_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(daily_note_path, "w", encoding="utf-8") as f:
+                f.write(f"# {today_str}\n\n{formatted_conversation}\n")
+        else:
+            # Append to existing daily note
+            logger.info(f"Appending to existing daily note: {daily_note_path}")
+            with open(daily_note_path, "a", encoding="utf-8") as f:
+                f.write(f"\n\n{formatted_conversation}\n")
+        
+        return {
+            "status": "success",
+            "message": f"Conversation '{request.conversation_name}' saved to {daily_note_path.name}",
+            "file_path": str(daily_note_path.relative_to(Path(config["vault"]["path"])))
+        }
+    except HTTPException as he:
+        # Re-raise FastAPI HTTP exceptions
+        raise he
+    except Exception as e:
+        logger.error(f"Failed to save conversation: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to save conversation: {str(e)}"
+        )
+
+@app.post("/debug_save_conversation")
+async def debug_save_conversation(request: SaveConversationRequest):
+    """
+    Debug version of save_conversation with more detailed logging and error information
+    """
+    debug_info = {
+        "environment": {
+            "OBSIDIAN_VAULT_PATH": os.environ.get("OBSIDIAN_VAULT_PATH", "Not set"),
+            "config_vault_path": str(config["vault"]["path"]),
+            "working_directory": os.getcwd(),
+        },
+        "request": {
+            "session_id": request.session_id,
+            "conversation_name": request.conversation_name
+        },
+        "session_exists": request.session_id in rag_pipeline.conversation_memory.sessions,
+        "interactions_count": 0
+    }
+    
+    try:
+        # Get current date for daily note
+        today = datetime.now()
+        today_str = today.strftime("%Y-%m-%d")
+        
+        # Get vault path from config
+        vault_path = Path(config["vault"]["path"])
+        debug_info["vault"] = {
+            "resolved_path": str(vault_path.resolve()),
+            "exists": vault_path.exists(),
+            "is_dir": vault_path.is_dir() if vault_path.exists() else False,
+            "permissions": {
+                "readable": os.access(str(vault_path), os.R_OK) if vault_path.exists() else False,
+                "writable": os.access(str(vault_path), os.W_OK) if vault_path.exists() else False,
+                "executable": os.access(str(vault_path), os.X_OK) if vault_path.exists() else False
+            }
+        }
+        
+        # Check for session and conversations
+        if request.session_id in rag_pipeline.conversation_memory.sessions:
+            interactions = rag_pipeline.conversation_memory.sessions[request.session_id]
+            debug_info["interactions_count"] = len(interactions)
+            
+            if interactions:
+                debug_info["first_interaction"] = {
+                    "user_message_sample": interactions[0]["user_message"][:100] + "..." if len(interactions[0]["user_message"]) > 100 else interactions[0]["user_message"],
+                    "assistant_message_sample": interactions[0]["assistant_message"][:100] + "..." if len(interactions[0]["assistant_message"]) > 100 else interactions[0]["assistant_message"]
+                }
+        
+        # Scan for daily notes
+        daily_notes = []
+        try:
+            for file_path in vault_path.rglob("*.md"):
+                if re.search(r"\d{4}-\d{2}-\d{2}", file_path.name):
+                    daily_notes.append(str(file_path.relative_to(vault_path)))
+                    if len(daily_notes) >= 5:  # Limit to 5 examples
+                        break
+            debug_info["daily_notes_found"] = daily_notes
+        except Exception as e:
+            debug_info["daily_notes_error"] = str(e)
+        
+        # All diagnostics complete
+        return {
+            "status": "debug_info",
+            "debug_info": debug_info
+        }
+        
+    except Exception as e:
+        logger.error(f"Debug save conversation failed: {str(e)}", exc_info=True)
+        return {
+            "status": "error",
+            "debug_info": debug_info,
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
 
 @app.get("/query")
 @limiter.limit("10/minute")

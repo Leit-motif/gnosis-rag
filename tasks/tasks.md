@@ -28,5 +28,5 @@
   - [x] Themes
   - [x] Reflect
 
- - [ ] 6. Add ability to write current chatgpt conversation (from within the plugin) to the current day's page in my obsidian vault. It should be under it's own header '## My Obsidian Helper: {conversation name}'
-  - [ ] If the day's page hasn't been created, create it first.
+ - [x] 6. Add ability to write current chatgpt conversation (from within the plugin) to the current day's page in my obsidian vault. It should be under it's own header '## My Obsidian Helper: {conversation name}'
+  - [x] If the day's page hasn't been created, create it first.
