@@ -6,7 +6,7 @@ info:
     This plugin enables natural language querying of your personal knowledge base.
   version: 1.0.0
 servers:
-  - url: https://4ffa-2600-1700-966e-400-b957-2a32-46e6-fb59.ngrok-free.app
+  - url: https://closer-ma-besides-ted.trycloudflare.com
     description: Development server
 paths:
   /query:
@@ -85,6 +85,67 @@ paths:
                 properties:
                   detail:
                     type: string
+
+  /save_conversation:
+    post:
+      operationId: saveConversation
+      summary: Save conversation to the current day's page in Obsidian
+      description: |
+        Saves the current ChatGPT conversation to the current day's page in your Obsidian vault.
+        If the day's page doesn't exist, it will be created first.
+        The conversation will be added under a header "## My Obsidian Helper: {conversation name}".
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - session_id
+                - conversation_name
+              properties:
+                session_id:
+                  type: string
+                  description: Session ID of the current conversation
+                conversation_name:
+                  type: string
+                  description: Name to identify this conversation in the daily note
+      responses:
+        '200':
+          description: Conversation saved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  message:
+                    type: string
+                    example: "Conversation saved to 2023-07-15.md"
+                  file_path:
+                    type: string
+                    example: "2023-07-15.md"
+        '404':
+          description: Session or conversation not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
+
   /index:
     post:
       operationId: indexVault
