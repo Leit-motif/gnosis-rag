@@ -89,6 +89,12 @@ async def get_legal():
 class SaveConversationRequest(BaseModel):
     session_id: str
     conversation_name: str
+    messages: Optional[List[Dict[str, str]]] = None  # Add optional messages field
+
+# After the SaveConversationRequest model definition, add a new model for exact content
+class SaveExactContentRequest(BaseModel):
+    conversation_name: str
+    content: str
 
 # Initialize components
 try:
@@ -157,9 +163,136 @@ async def save_conversation(request: SaveConversationRequest):
     Save the current conversation to the current day's page in the Obsidian vault
     """
     try:
+        # --- BEGIN ADDED LOGGING ---
+        logger.info(f"Received save_conversation request: {request.model_dump()}")
+        available_sessions = list(rag_pipeline.conversation_memory.sessions.keys())
+        logger.info(f"Current sessions in memory: {available_sessions}")
+        # --- END ADDED LOGGING ---
+        
         logger.info(f"Saving conversation {request.conversation_name} from session {request.session_id}")
         
-        # Get current date for daily note
+        # Skip session lookup if conversation messages are provided directly
+        if request.messages is not None and len(request.messages) > 0:
+            logger.info(f"Using provided messages directly instead of session lookup")
+            # Format the conversation with blockquotes and proper Markdown
+            conversation_content = []
+            conversation_content.append(f"## My Obsidian Helper: {request.conversation_name}")
+            conversation_content.append(f"_Saved on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}_\n")
+            
+            for i, message in enumerate(request.messages):
+                if message.get("role") == "user":
+                    # User message processing
+                    user_lines = message.get("content", "").split('\n')
+                    first_user_line = user_lines[0] if user_lines else ""
+                    conversation_content.append(f"> **User ({i//2+1}):** {first_user_line}")
+                    
+                    # Add remaining lines of user message
+                    for line in user_lines[1:]:
+                        conversation_content.append(f"> {line}")
+                    
+                    conversation_content.append("")  # Add blank line between speakers
+                elif message.get("role") == "assistant":
+                    # Assistant message processing
+                    assistant_lines = message.get("content", "").split('\n')
+                    first_assistant_line = assistant_lines[0] if assistant_lines else ""
+                    conversation_content.append(f"> **Assistant ({i//2+1}):** {first_assistant_line}")
+                    
+                    # Add remaining lines
+                    for line in assistant_lines[1:]:
+                        conversation_content.append(f"> {line}")
+                    
+                    conversation_content.append("")  # Add blank line after exchange
+        else:
+            # Original session-based retrieval logic
+            # Handle special session ID cases
+            session_id = request.session_id
+            if session_id in ["current", "default"]:
+                # Find the most recent session
+                if not rag_pipeline.conversation_memory.sessions:
+                    logger.error(f"No sessions found when requesting '{session_id}' session")
+                    raise HTTPException(
+                        status_code=404,
+                        detail="No conversations found. Please start a conversation first."
+                    )
+                    
+                # Get the most recent session by checking timestamps
+                most_recent_session = None
+                most_recent_time = None
+                
+                for sess_id, interactions in rag_pipeline.conversation_memory.sessions.items():
+                    if interactions and "timestamp" in interactions[-1]:
+                        last_time = datetime.fromisoformat(interactions[-1]["timestamp"])
+                        if most_recent_time is None or last_time > most_recent_time:
+                            most_recent_time = last_time
+                            most_recent_session = sess_id
+                
+                if most_recent_session:
+                    logger.info(f"Using most recent session {most_recent_session} for '{session_id}' request")
+                    session_id = most_recent_session
+                    # --- BEGIN ADDED LOGGING ---
+                    logger.info(f"Resolved session_id to: {session_id}")
+                    # --- END ADDED LOGGING ---
+                else:
+                    logger.error(f"Could not determine most recent session for '{session_id}' request")
+                    raise HTTPException(
+                        status_code=404,
+                        detail="Could not determine the current conversation. Please start a new conversation."
+                    )
+                    
+            # Check if conversation session exists
+            if session_id not in rag_pipeline.conversation_memory.sessions:
+                logger.error(f"Session {session_id} not found")
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Conversation session '{session_id}' not found"
+                )
+                
+            # Get conversation data
+            interactions = rag_pipeline.conversation_memory.sessions[session_id]
+            
+            # --- BEGIN ADDED LOGGING ---
+            if interactions:
+                logger.info(f"First interaction found for session {session_id}: User: {interactions[0]['user_message'][:100]}... | Assistant: {interactions[0]['assistant_message'][:100]}...")
+            else:
+                logger.warning(f"No interactions found in memory for session {session_id} despite session existing.")
+            # --- END ADDED LOGGING ---
+            
+            if not interactions:
+                logger.error(f"No interactions found in session {session_id}")
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No conversation data found for session '{session_id}'"
+                )
+                
+            # Format the conversation with blockquotes and proper Markdown
+            conversation_content = []
+            conversation_content.append(f"## My Obsidian Helper: {request.conversation_name}")
+            conversation_content.append(f"_Saved on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}_\n")
+            
+            for i, interaction in enumerate(interactions):
+                # User message - combine first line with the user label
+                user_lines = interaction["user_message"].split('\n')
+                first_user_line = user_lines[0] if user_lines else ""
+                conversation_content.append(f"> **User ({i+1}):** {first_user_line}")
+                
+                # Add remaining lines of user message with blockquotes
+                for line in user_lines[1:]:
+                    conversation_content.append(f"> {line}")
+                
+                conversation_content.append("")  # Add blank line between speakers
+                
+                # Assistant message - combine first line with the assistant label
+                assistant_lines = interaction["assistant_message"].split('\n')
+                first_assistant_line = assistant_lines[0] if assistant_lines else ""
+                conversation_content.append(f"> **Assistant ({i+1}):** {first_assistant_line}")
+                
+                # Add remaining lines of assistant message with blockquotes
+                for line in assistant_lines[1:]:
+                    conversation_content.append(f"> {line}")
+                
+                conversation_content.append("")  # Add blank line after each complete exchange
+        
+        # Get current date for daily note (moved out of the else block)
         today = datetime.now()
         today_str = today.strftime("%Y-%m-%d")
         month_str = today.strftime("%m")
@@ -176,53 +309,7 @@ async def save_conversation(request: SaveConversationRequest):
         
         daily_note_path = daily_notes_folder / daily_note_filename
         logger.info(f"Using daily note path: {daily_note_path}")
-        
-        # Check if conversation session exists
-        if request.session_id not in rag_pipeline.conversation_memory.sessions:
-            logger.error(f"Session {request.session_id} not found")
-            raise HTTPException(
-                status_code=404,
-                detail=f"Conversation session '{request.session_id}' not found"
-            )
-            
-        # Get conversation data
-        interactions = rag_pipeline.conversation_memory.sessions[request.session_id]
-        
-        if not interactions:
-            logger.error(f"No interactions found in session {request.session_id}")
-            raise HTTPException(
-                status_code=404,
-                detail=f"No conversation data found for session '{request.session_id}'"
-            )
-            
-        # Format the conversation with blockquotes and proper Markdown
-        conversation_content = []
-        conversation_content.append(f"## My Obsidian Helper: {request.conversation_name}")
-        conversation_content.append(f"_Saved on: {today.strftime('%Y-%m-%d %H:%M:%S')}_\n")
-        
-        for i, interaction in enumerate(interactions):
-            # User message - combine first line with the user label
-            user_lines = interaction["user_message"].split('\n')
-            first_user_line = user_lines[0] if user_lines else ""
-            conversation_content.append(f"> **User ({i+1}):** {first_user_line}")
-            
-            # Add remaining lines of user message with blockquotes
-            for line in user_lines[1:]:
-                conversation_content.append(f"> {line}")
-            
-            conversation_content.append("")  # Add blank line between speakers
-            
-            # Assistant message - combine first line with the assistant label
-            assistant_lines = interaction["assistant_message"].split('\n')
-            first_assistant_line = assistant_lines[0] if assistant_lines else ""
-            conversation_content.append(f"> **Assistant ({i+1}):** {first_assistant_line}")
-            
-            # Add remaining lines of assistant message with blockquotes
-            for line in assistant_lines[1:]:
-                conversation_content.append(f"> {line}")
-            
-            conversation_content.append("")  # Add blank line after each complete exchange
-        
+
         formatted_conversation = "\n".join(conversation_content)
         
         # If the daily note doesn't exist, create it
@@ -394,6 +481,89 @@ async def query_vault_double_slash(
     date_range: Optional[str] = None
 ):
     return await query_vault(request, q, session_id, tags, date_range)
+
+# Add a new endpoint to see all available conversations
+@app.get("/debug_all_conversations")
+async def debug_all_conversations():
+    """
+    Return all available conversation sessions and their first messages
+    """
+    sessions_info = {}
+    for session_id, interactions in rag_pipeline.conversation_memory.sessions.items():
+        if interactions:
+            sessions_info[session_id] = {
+                "message_count": len(interactions),
+                "first_user_message": interactions[0]["user_message"][:100] + "..." if len(interactions[0]["user_message"]) > 100 else interactions[0]["user_message"],
+                "first_assistant_message": interactions[0]["assistant_message"][:100] + "..." if len(interactions[0]["assistant_message"]) > 100 else interactions[0]["assistant_message"]
+            }
+        else:
+            sessions_info[session_id] = {"message_count": 0}
+    
+    return {
+        "status": "success",
+        "sessions_count": len(sessions_info),
+        "sessions": sessions_info
+    }
+
+# Add a new endpoint that accepts exact content for saving
+@app.post("/save_exact_content")
+async def save_exact_content(request: SaveExactContentRequest):
+    """
+    Save explicitly provided content to the current day's page in the Obsidian vault
+    """
+    try:
+        logger.info(f"Saving exact content with name: {request.conversation_name}")
+        
+        # Get current date for daily note
+        today = datetime.now()
+        today_str = today.strftime("%Y-%m-%d")
+        month_str = today.strftime("%m")
+        
+        # Use the vault path from config, which already includes up to the year directory
+        vault_path = Path(config["vault"]["path"])
+        
+        # Only add the month directory since vault_path already includes up to the year
+        daily_notes_folder = vault_path / month_str
+        daily_note_filename = f"{today_str}.md"
+        
+        # Make sure directory exists
+        daily_notes_folder.mkdir(parents=True, exist_ok=True)
+        
+        daily_note_path = daily_notes_folder / daily_note_filename
+        logger.info(f"Using daily note path: {daily_note_path}")
+        
+        # Format the content with headers
+        conversation_content = []
+        conversation_content.append(f"## My Obsidian Helper: {request.conversation_name}")
+        conversation_content.append(f"_Saved on: {today.strftime('%Y-%m-%d %H:%M:%S')}_\n")
+        conversation_content.append(request.content)
+        
+        formatted_conversation = "\n".join(conversation_content)
+        
+        # If the daily note doesn't exist, create it
+        if not daily_note_path.exists():
+            logger.info(f"Creating new daily note: {daily_note_path}")
+            # Ensure the directory exists
+            daily_note_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(daily_note_path, "w", encoding="utf-8") as f:
+                f.write(f"# {today_str}\n\n{formatted_conversation}\n")
+        else:
+            # Append to existing daily note
+            logger.info(f"Appending to existing daily note: {daily_note_path}")
+            with open(daily_note_path, "a", encoding="utf-8") as f:
+                f.write(f"\n\n{formatted_conversation}\n")
+        
+        return {
+            "status": "success",
+            "message": f"Content '{request.conversation_name}' saved to {daily_note_path.name}",
+            "file_path": str(daily_note_path.relative_to(Path(config["vault"]["path"])))
+        }
+    except Exception as e:
+        logger.error(f"Failed to save exact content: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to save exact content: {str(e)}"
+        )
 
 if __name__ == "__main__":
     import uvicorn

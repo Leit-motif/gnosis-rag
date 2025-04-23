@@ -1,169 +1,442 @@
-openapi: 3.1.0
-info:
-  title: Obsidian Vault Assistant
-  description: |
-    Access and interact with your Obsidian vault through ChatGPT.
-    This plugin enables natural language querying of your personal knowledge base.
-  version: 1.0.0
-servers:
-  - url: https://closer-ma-besides-ted.trycloudflare.com
-    description: Development server
-paths:
-  /query:
-    get:
-      operationId: queryVault
-      summary: Query your Obsidian vault
-      description: |
-        Search your Obsidian vault using natural language queries.
-        Results can be filtered by tags or date ranges.
-        The response includes a synthesized answer and the source documents.
-      parameters:
-        - name: q
-          in: query
-          description: Natural language query
-          schema:
-            type: string
-          required: true
-        - name: session_id
-          in: query
-          description: Optional session ID for conversation continuity
-          schema:
-            type: string
-        - name: tags
-          in: query
-          description: Optional list of tags to filter by
-          schema:
-            type: array
-            items:
-              type: string
-        - name: date_range
-          in: query
-          description: Optional date range filter (e.g. "last_30_days", "last_week", "this_month")
-          schema:
-            type: string
-      responses:
-        '200':
-          description: Query result with sources
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  response:
-                    type: string
-                    description: Synthesized answer with links to source thoughts
-                  sources:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        title:
-                          type: string
-                        excerpt:
-                          type: string
-                        score:
-                          type: number
-                          format: float
-                  session_id:
-                    type: string
-                    description: Session ID for this conversation
-        '400':
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  detail:
-                    type: string
-        '500':
-          description: Server error
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  detail:
-                    type: string
-
-  /save_conversation:
-    post:
-      operationId: saveConversation
-      summary: Save conversation to the current day's page in Obsidian
-      description: |
-        Saves the current ChatGPT conversation to the current day's page in your Obsidian vault.
-        If the day's page doesn't exist, it will be created first.
-        The conversation will be added under a header "## My Obsidian Helper: {conversation name}".
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
-                - session_id
-                - conversation_name
-              properties:
-                session_id:
-                  type: string
-                  description: Session ID of the current conversation
-                conversation_name:
-                  type: string
-                  description: Name to identify this conversation in the daily note
-      responses:
-        '200':
-          description: Conversation saved successfully
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-                    example: "success"
-                  message:
-                    type: string
-                    example: "Conversation saved to 2023-07-15.md"
-                  file_path:
-                    type: string
-                    example: "2023-07-15.md"
-        '404':
-          description: Session or conversation not found
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  detail:
-                    type: string
-        '500':
-          description: Server error
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  detail:
-                    type: string
-
-  /index:
-    post:
-      operationId: indexVault
-      summary: Index the Obsidian vault
-      description: |
-        Index the Obsidian vault content into the vector store.
-        This needs to be called before querying if the index does not exist.
-      responses:
-        '200':
-          description: Indexing result
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-                  message:
-                    type: string
-                  document_count:
-                    type: integer 
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Gnosis RAG API",
+    "description": "API for querying and analyzing Obsidian vaults using hybrid RAG",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "https://starts-lift-waste-full.trycloudflare.com",
+      "description": "Cloudflare Tunnel URL"
+    }
+  ],
+  "paths": {
+    "/index": {
+      "post": {
+        "summary": "Index Vault",
+        "description": "Index the Obsidian vault content into the vector store.\nThis needs to be called before querying.",
+        "operationId": "index_vault_index_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/save_conversation": {
+      "post": {
+        "summary": "Save Conversation",
+        "description": "Save the current conversation to the current day's page in the Obsidian vault",
+        "operationId": "save_conversation_save_conversation_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveConversationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/save_exact_content": {
+      "post": {
+        "summary": "Save Exact Content",
+        "description": "Save explicitly provided content to the current day's page in the Obsidian vault",
+        "operationId": "save_exact_content_save_exact_content_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveExactContentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/debug_all_conversations": {
+      "get": {
+        "summary": "Debug All Conversations",
+        "description": "Return all available conversation sessions and their first messages",
+        "operationId": "debug_all_conversations_debug_all_conversations_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/debug_save_conversation": {
+      "post": {
+        "summary": "Debug Save Conversation",
+        "description": "Debug version of save_conversation with more detailed logging and error information",
+        "operationId": "debug_save_conversation_debug_save_conversation_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveConversationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/query": {
+      "get": {
+        "summary": "Query Vault",
+        "description": "Query the Obsidian vault using hybrid search",
+        "operationId": "query_vault_query_get",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Q"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "tags",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tags"
+            }
+          },
+          {
+            "name": "date_range",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date Range"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "//query": {
+      "get": {
+        "summary": "Query Vault Double Slash",
+        "operationId": "query_vault_double_slash__query_get",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Q"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Session Id"
+            }
+          },
+          {
+            "name": "tags",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tags"
+            }
+          },
+          {
+            "name": "date_range",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Date Range"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "SaveConversationRequest": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "title": "Session Id"
+          },
+          "conversation_name": {
+            "type": "string",
+            "title": "Conversation Name"
+          },
+          "messages": {
+            "type": "array",
+            "title": "Messages",
+            "description": "Optional array of conversation messages with role/content pairs",
+            "items": {
+              "type": "object",
+              "properties": {
+                "role": {
+                  "type": "string",
+                  "description": "Role of the message sender (user or assistant)"
+                },
+                "content": {
+                  "type": "string",
+                  "description": "Content of the message"
+                }
+              }
+            }
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id",
+          "conversation_name"
+        ],
+        "title": "SaveConversationRequest"
+      },
+      "SaveExactContentRequest": {
+        "properties": {
+          "conversation_name": {
+            "type": "string",
+            "title": "Conversation Name"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content"
+          }
+        },
+        "type": "object",
+        "required": [
+          "conversation_name",
+          "content"
+        ],
+        "title": "SaveExactContentRequest"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+} 
