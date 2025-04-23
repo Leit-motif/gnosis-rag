@@ -1,16 +1,97 @@
-# Obsidian ChatGPT Plugin
+# Gnosis RAG - Obsidian-ChatGPT Plugin
 
-A powerful ChatGPT plugin that enables natural conversation with your Obsidian vault using hybrid RAG (Retrieval Augmented Generation). Combine semantic search with Obsidian's rich linking and tagging features to explore your personal knowledge system.
+A plugin for querying your Obsidian vault from ChatGPT and saving conversations back to your vault.
 
 ## Features
 
-- **Hybrid RAG Pipeline**: Combines semantic search (embeddings) with symbolic search (tags, links, dates)
-- **Multiple Vector Store Options**: FAISS, Chroma, or Qdrant
-- **Flexible Embedding Models**: OpenAI or local models (e.g., all-MiniLM, instructor-xl)
-- **Rich Query Capabilities**: Search by natural language, tags, and date ranges
-- **Theme Analysis**: Discover recurring patterns and themes in your notes
-- **Conversation Memory**: Maintains context across chat sessions for more coherent interactions
-- **Save Conversations**: Save your ChatGPT conversations directly to your daily notes
+- **Query your Obsidian vault** using natural language
+- **Save conversations** back to your daily notes
+- **Advanced RAG retrieval** using hybrid search and semantic understanding
+- **Session management** for multi-turn conversations
+
+## How Save Conversation Works
+
+The plugin provides multiple ways to save conversations to your Obsidian vault:
+
+### Method 1: Standard Session-Based Saving 
+
+The default method uses session IDs to track conversations:
+
+```json
+{
+  "session_id": "session123",
+  "conversation_name": "My Conversation"
+}
+```
+
+### Method 2: Direct Message Saving (Recommended)
+
+This method sends the actual conversation content directly, bypassing session ID lookup:
+
+```json
+{
+  "session_id": "any-value",
+  "conversation_name": "My Conversation",
+  "messages": [
+    {
+      "role": "user",
+      "content": "What's the difference between X and Y?"
+    },
+    {
+      "role": "assistant",
+      "content": "X has features A and B, while Y has features C and D..."
+    }
+  ]
+}
+```
+
+### Method 3: Direct Content Saving
+
+This method allows saving arbitrary content directly:
+
+```json
+{
+  "conversation_name": "My Custom Content",
+  "content": "Any text you want to save to your vault"
+}
+```
+
+## Debugging Endpoints
+
+For troubleshooting, there are several debugging endpoints:
+
+- `/debug_all_conversations` - Lists all available sessions and their first messages
+- `/debug_save_conversation` - Provides detailed debug info for save requests
+- `/save_exact_content` - Allows saving exact content directly
+
+## Using Test Scripts
+
+Several test scripts are provided to demonstrate the API:
+
+- `test_save_conversation.py` - Tests the standard session-based saving
+- `test_save_with_messages.py` - Tests the direct message saving method
+- `test_direct_save.py` - Tests saving exact content directly
+
+## Editing the Plugin for Custom GPT
+
+If you're creating a Custom GPT, make sure the plugin uses the direct message saving method for more reliable operation.
+
+When saving conversations from ChatGPT, you should construct the request with:
+
+1. A conversation name
+2. The actual messages from the current conversation
+3. Any session ID (it will be ignored when messages are provided)
+
+This ensures that the exact content you see in ChatGPT is what gets saved to your vault.
+
+## Troubleshooting
+
+If the wrong content is being saved to your vault, try one of these approaches:
+
+1. Use the direct message saving method instead of session-based saving
+2. Use `/debug_all_conversations` to see what sessions are available
+3. Use `test_save_with_messages.py` to demonstrate correct saving
+4. Check the server logs for detailed information about save requests
 
 ## Prerequisites
 
