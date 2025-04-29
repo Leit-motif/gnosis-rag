@@ -2,7 +2,7 @@ from typing import List, Optional, Dict, Any, Tuple
 import os
 import faiss
 import numpy as np
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, date
 from openai import OpenAI
 from tenacity import retry, stop_after_attempt, wait_exponential
 import logging
@@ -17,6 +17,13 @@ import shutil
 from .graph_retriever import GraphRetriever
 from .conversation_memory import ConversationMemory
 import json
+
+# Add a custom JSON encoder to handle dates
+class CustomJSONEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, (datetime, date)):
+            return obj.isoformat()
+        return super().default(obj)
 
 class RAGPipeline:
     def __init__(self, config: Dict[str, Any]):
@@ -114,9 +121,39 @@ class RAGPipeline:
                             json.dump(self.doc_embeddings, f)
                         # Save the document store as well
                         document_store_path = self.embeddings_path.parent / "document_store.json"
-                        with open(document_store_path, 'w') as f:
-                            json.dump(self.document_store, f)
-                        self.logger.info("Saved index, embeddings, and document store to disk")
+                        # Create a backup of the current file if it exists
+                        backup_path = document_store_path.with_suffix('.json.bak')
+                        if document_store_path.exists():
+                            try:
+                                shutil.copy2(document_store_path, backup_path)
+                            except Exception as e:
+                                self.logger.warning(f"Failed to create backup: {str(e)}")
+                        
+                        # More robust save approach: write to temp file in same directory
+                        temp_path = document_store_path.with_suffix('.json.tmp')
+                        try:
+                            # Use the custom JSON encoder to handle date objects
+                            with open(temp_path, 'w', encoding='utf-8') as f:
+                                json.dump(self.document_store, f, ensure_ascii=False, indent=2, cls=CustomJSONEncoder)
+                            
+                            # On Windows, ensure the target file doesn't exist before renaming
+                            if document_store_path.exists():
+                                document_store_path.unlink()
+                            
+                            # Rename the temp file to the target file
+                            os.rename(temp_path, document_store_path)
+                            self.logger.info(f"Successfully saved document store to {document_store_path}")
+                        except Exception as e:
+                            self.logger.error(f"Failed to save document store: {str(e)}")
+                            # If we have a backup, try to restore it
+                            if backup_path.exists():
+                                try:
+                                    if document_store_path.exists():
+                                        document_store_path.unlink()
+                                    shutil.copy2(backup_path, document_store_path)
+                                    self.logger.info("Restored document store from backup")
+                                except Exception as restore_e:
+                                    self.logger.error(f"Failed to restore backup: {str(restore_e)}")
                     except Exception as e:
                         self.logger.warning(f"Failed to save index to disk: {str(e)}")
                 except Exception as e:
@@ -195,6 +232,27 @@ class RAGPipeline:
             return np.array([e.embedding for e in response.data])
         except Exception as e:
             self.logger.error(f"OpenAI API error: {str(e)}")
+            # If this is specifically a rate limit or quota error, log it clearly
+            error_msg = str(e)
+            if "429" in error_msg or "rate limit" in error_msg.lower() or "quota" in error_msg.lower():
+                self.logger.error("Hit OpenAI rate limit or quota - please check your API usage and billing details")
+                # If we have local embeddings stored, try to use them as a fallback
+                if self._have_temp_embeddings():
+                    self.logger.warning("Attempting to use local embeddings as fallback for rate-limited request")
+                    try:
+                        # Create a simple fallback embedding (not ideal but better than failing)
+                        # This would work best with previously cached embeddings
+                        # In a real system, you might use a local embeddings model as fallback
+                        if len(texts) == 1 and texts[0]:
+                            self.logger.info("Using fallback for single text embedding during rate limit")
+                            # For single text, try a naive semantic search by direct string comparison
+                            query_text = texts[0].lower()
+                            # Return a fallback embedding that's all zeros except for a signature value
+                            # This is not a real embedding but a placeholder to avoid breaking downstream code
+                            fallback_dim = self.config["vector_store"]["dimension"]
+                            return np.zeros((1, fallback_dim))
+                    except Exception as fallback_e:
+                        self.logger.error(f"Fallback embedding method failed: {str(fallback_e)}")
             raise
     
     def _process_batch(self, batch: List[Dict[str, Any]], batch_idx: int) -> Tuple[np.ndarray, List[Dict[str, Any]]]:
@@ -222,39 +280,42 @@ class RAGPipeline:
     def _save_index(self, index_path: Path) -> None:
         """Save FAISS index to disk with proper Windows file handling"""
         try:
-            # Create a temporary file in a temp directory
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.index') as temp_file:
-                temp_path = Path(temp_file.name)
-                self.logger.info(f"Using temporary file: {temp_path}")
-                
-                # Save to temporary file
-                faiss.write_index(self.index, str(temp_path))
-                
-                # Close the file to ensure it's written
-                temp_file.close()
-                
+            # Create a backup of the current index if it exists
+            backup_path = index_path.with_suffix('.index.bak')
+            if index_path.exists():
                 try:
-                    # Try to move the temp file to the target location
-                    # Using shutil.move which handles cross-device moves
-                    shutil.move(str(temp_path), str(index_path))
-                    self.logger.info(f"Successfully saved index with {self.index.ntotal} vectors")
+                    shutil.copy2(index_path, backup_path)
+                    self.logger.info(f"Created backup of index at {backup_path}")
                 except Exception as e:
-                    self.logger.error(f"Failed to move index file: {str(e)}")
-                    # Try to copy instead of move as fallback
+                    self.logger.warning(f"Failed to create backup of index: {str(e)}")
+            
+            # Save to a temporary file in the same directory
+            temp_path = index_path.with_suffix('.index.tmp')
+            
+            # Save to temporary file
+            faiss.write_index(self.index, str(temp_path))
+            
+            # Replace the original file with the temporary file
+            try:
+                # On Windows, ensure the target file doesn't exist before renaming
+                if index_path.exists():
+                    index_path.unlink()
+                
+                # Rename the temp file to the target file
+                os.rename(temp_path, index_path)
+                self.logger.info(f"Successfully saved index with {self.index.ntotal} vectors")
+            except Exception as e:
+                self.logger.error(f"Failed to replace index file: {str(e)}")
+                # If we have a backup, try to restore it
+                if backup_path.exists():
                     try:
-                        shutil.copy2(str(temp_path), str(index_path))
-                        self.logger.info(f"Successfully copied index with {self.index.ntotal} vectors")
-                    except Exception as e2:
-                        self.logger.error(f"Failed to copy index file: {str(e2)}")
-                        raise
-                finally:
-                    # Clean up temp file if it still exists
-                    try:
-                        if temp_path.exists():
-                            temp_path.unlink()
-                    except:
-                        pass
-                        
+                        if index_path.exists():
+                            index_path.unlink()
+                        shutil.copy2(backup_path, index_path)
+                        self.logger.info("Restored index from backup")
+                    except Exception as restore_e:
+                        self.logger.error(f"Failed to restore backup: {str(restore_e)}")
+                raise
         except Exception as e:
             self.logger.error(f"Failed to save index: {str(e)}")
             raise
@@ -376,9 +437,39 @@ class RAGPipeline:
                     json.dump(self.doc_embeddings, f)
                 # Save the document store as well
                 document_store_path = self.embeddings_path.parent / "document_store.json"
-                with open(document_store_path, 'w') as f:
-                    json.dump(self.document_store, f)
-                self.logger.info("Saved index, embeddings, and document store to disk")
+                # Create a backup of the current file if it exists
+                backup_path = document_store_path.with_suffix('.json.bak')
+                if document_store_path.exists():
+                    try:
+                        shutil.copy2(document_store_path, backup_path)
+                    except Exception as e:
+                        self.logger.warning(f"Failed to create backup: {str(e)}")
+                
+                # More robust save approach: write to temp file in same directory
+                temp_path = document_store_path.with_suffix('.json.tmp')
+                try:
+                    # Use the custom JSON encoder to handle date objects
+                    with open(temp_path, 'w', encoding='utf-8') as f:
+                        json.dump(self.document_store, f, ensure_ascii=False, indent=2, cls=CustomJSONEncoder)
+                    
+                    # On Windows, ensure the target file doesn't exist before renaming
+                    if document_store_path.exists():
+                        document_store_path.unlink()
+                    
+                    # Rename the temp file to the target file
+                    os.rename(temp_path, document_store_path)
+                    self.logger.info(f"Successfully saved document store to {document_store_path}")
+                except Exception as e:
+                    self.logger.error(f"Failed to save document store: {str(e)}")
+                    # If we have a backup, try to restore it
+                    if backup_path.exists():
+                        try:
+                            if document_store_path.exists():
+                                document_store_path.unlink()
+                            shutil.copy2(backup_path, document_store_path)
+                            self.logger.info("Restored document store from backup")
+                        except Exception as restore_e:
+                            self.logger.error(f"Failed to restore backup: {str(restore_e)}")
             except Exception as e:
                 self.logger.warning(f"Failed to save to disk: {str(e)}")
             

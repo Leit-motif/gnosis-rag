@@ -1,0 +1,57 @@
+{
+  "direct": {
+    "success": true,
+    "graph_stats": {
+      "nodes": 177,
+      "edges": 32,
+      "documents": 165,
+      "tags": 12
+    },
+    "query_results": {
+      "results": [],
+      "entry_points": [],
+      "total_candidates": 0,
+      "query": "What are the main concepts?",
+      "config": {
+        "entry_points": {
+          "vector_entry_count": 3,
+          "tag_entry_enabled": true,
+          "entry_weight_vector": 0.7,
+          "entry_weight_tags": 0.3
+        },
+        "traversal": {
+          "max_hops": 2,
+          "max_documents": 15,
+          "tag_expansion_enabled": true,
+          "path_expansion_enabled": true,
+          "min_similarity": 0.5
+        },
+        "hybrid": {
+          "enabled": true,
+          "graph_weight": 0.6,
+          "vector_weight": 0.4,
+          "recency_bonus": 0.1
+        }
+      }
+    },
+    "context": "No relevant documents found."
+  },
+  "rag": {
+    "success": true,
+    "vector_results": {
+      "time": 2.0690371990203857,
+      "num_results": 0,
+      "mode": null
+    },
+    "graph_results": {
+      "time": 10.617607355117798,
+      "num_results": 0,
+      "mode": "graph"
+    },
+    "hybrid_results": {
+      "time": 10.677553415298462,
+      "num_results": 0,
+      "mode": "hybrid"
+    }
+  }
+}

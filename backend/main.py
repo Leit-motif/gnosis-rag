@@ -425,52 +425,69 @@ async def query_vault(
     date_range: Optional[str] = None
 ):
     """
-    Query the Obsidian vault using hybrid search
+    Query the Obsidian vault using the RAG pipeline
     """
     try:
         logger.info(f"Processing query: {q}")
+        
+        # Parse date range if specified
+        start_date = None
+        end_date = None
+        if date_range:
+            try:
+                dates = date_range.split(',')
+                if len(dates) >= 1 and dates[0]:
+                    start_date = datetime.fromisoformat(dates[0])
+                if len(dates) >= 2 and dates[1]:
+                    end_date = datetime.fromisoformat(dates[1])
+            except ValueError as e:
+                logger.warning(f"Invalid date format in range '{date_range}': {e}")
+                # Continue with None values for dates
         
         # Generate session ID if not provided
         if not session_id:
             session_id = f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
             logger.info(f"Generated new session ID: {session_id}")
         
-        # Parse date range if provided
-        start_date = None
-        end_date = None
-        if date_range:
-            if date_range == "last_30_days":
-                start_date = datetime.now() - timedelta(days=30)
-                end_date = datetime.now()
-            # Add more date range parsing options as needed
-
-        # Query the RAG pipeline
-        response = rag_pipeline.query(
-            query=q,
-            session_id=session_id,
-            conversation_memory=rag_pipeline.conversation_memory,
-            tags=tags,
-            start_date=start_date,
-            end_date=end_date
-        )
-        
-        # Add session ID to response
-        response["session_id"] = session_id
-        
-        logger.info("Query processed successfully")
-        return response
-        
-    except HTTPException as he:
-        # Re-raise FastAPI HTTP exceptions
-        raise he
+        # Execute query with specified filters
+        try:
+            return rag_pipeline.query(
+                query=q,
+                k=5,
+                session_id=session_id,
+                tags=tags,
+                start_date=start_date,
+                end_date=end_date
+            )
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(f"Error during query execution: {error_msg}")
+            
+            # Handle rate limit errors specially
+            if "RetryError" in error_msg and ("RateLimitError" in error_msg or "429" in error_msg or "quota" in error_msg.lower()):
+                logger.error("OpenAI API rate limit or quota exceeded")
+                return JSONResponse(
+                    status_code=429,
+                    content={
+                        "status": "error",
+                        "message": "OpenAI API rate limit or quota exceeded. Please try again later or check your API usage and billing details.",
+                        "error": "rate_limit_exceeded"
+                    }
+                )
+            
+            # General API error
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to query the vault: {str(e)}"
+            )
+            
     except Exception as e:
-        logger.error(f"Query failed: {str(e)}")
+        logger.error(f"Error processing query: {str(e)}")
         raise HTTPException(
             status_code=500,
-            detail=str(e)
+            detail=f"Failed to process query: {str(e)}"
         )
 
-# Additional route to handle double slash issue with ChatGPT
 @app.get("//query")
 @limiter.limit("10/minute")
 async def query_vault_double_slash(
@@ -480,6 +497,9 @@ async def query_vault_double_slash(
     tags: Optional[List[str]] = Query(None),
     date_range: Optional[str] = None
 ):
+    """
+    Alternative route for query to handle double slashes
+    """
     return await query_vault(request, q, session_id, tags, date_range)
 
 # Add a new endpoint to see all available conversations
