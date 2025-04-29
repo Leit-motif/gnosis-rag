@@ -17,6 +17,12 @@ tqdm>=4.66.0
 langchain>=0.1.0
 langchain-openai>=0.0.2
 langchain-community>=0.0.10
+langchain-text-splitters>=0.0.1
 unstructured>=0.10.30
 networkx>=3.0
-slowapi>=0.1.9 
+slowapi>=0.1.9
+numpy>=1.24.0
+pandas>=2.0.0
+matplotlib>=3.7.0
+# For enhanced graph RAG
+regex>=2023.0.0 
