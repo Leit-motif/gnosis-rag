@@ -1,0 +1,162 @@
+<context> # Overview Hybrid Graph RAG is an advanced Retrieval-Augmented Generation (RAG) pipeline that combines graph-based knowledge traversal with traditional vector-based similarity search. It is designed to improve retrieval precision, contextual coherence, and semantic linkage in large knowledge bases, such as Obsidian vaults or enterprise document graphs. By leveraging structured relationships (e.g., backlinks, tags, and paths) and enriching LLM inputs with contextual graph neighborhoods, this system allows for more accurate, explainable, and dynamic information retrieval. This solution is ideal for researchers, engineers, PKM practitioners, and internal AI agents needing grounded, semantically linked context for question answering and task generation.
+Core Features
+True Graph Construction
+What it does: Builds a comprehensive knowledge graph with node relationships including backlinks, tags, metadata, and recency.
+
+Why it's important: Enables semantic graph traversal and structurally coherent document discovery.
+
+How it works: Parses documents and metadata, builds directed/weighted graph with node enrichment using frontmatter, timestamps, and tags.
+
+Graph-Based Retriever
+What it does: Traverses the graph via k-hop expansion, tag/cluster relationships, and path-based queries.
+
+Why it's important: Finds documents based on structural proximity and semantic relationship, not just lexical similarity.
+
+How it works: Starts from a seed node (e.g., via keyword match or vector entry), then expands to neighbors using configurable traversal logic.
+
+Hybrid Retriever
+What it does: Combines graph traversal results with vector similarity re-ranking.
+
+Why it's important: Balances high-recall semantic search with high-precision structured retrieval.
+
+How it works: Generates a candidate document set using graph traversal, then re-ranks via vector similarity using a tunable scoring function.
+
+Graph-Aware Context Formatting
+What it does: Structures the retrieved context for LLM input, maintaining relational clarity (e.g., parent, child, sibling nodes).
+
+Why it's important: Enables the LLM to reason over relationships, not just raw text.
+
+How it works: Templates for different edge types (e.g., “linked via”, “tagged with”, “recently updated”) wrap the context in a relational narrative.
+
+RAG Pipeline Integration
+What it does: Seamlessly integrates graph retrieval into an existing RAG query interface.
+
+Why it's important: Ensures backward compatibility and future extensibility.
+
+How it works: The RAGPipeline.query() method accepts graph-specific parameters and falls back to vector retrieval as needed.
+
+User Experience
+User Personas
+Knowledge workers using Obsidian-style PKM systems for synthesis and recall
+
+AI agents generating answers from internal wikis or documentation graphs
+
+Researchers needing traceable, context-aware sources for deep queries
+
+Key User Flows
+Input natural language query → Candidate documents selected via hybrid retriever → Graph context formatted and sent to LLM → Answer generated with traceable source paths
+
+UI/UX Considerations
+Show retrieval provenance (graph path, edge types)
+
+Toggle between graph-only, vector-only, and hybrid modes
+
+Allow traversal parameter tuning (depth, weights, recency bias)
+
+Optional: interactive graph visualization of context neighborhood
+
+</context> <PRD> # Technical Architecture ## System Components - **Graph Builder:** Parses documents and builds a weighted directed graph - **Graph Retriever:** Implements traversal, expansion, and neighborhood discovery - **Hybrid Retriever:** Merges graph results with vector similarity ranking - **RAG Pipeline:** Coordinates query input, retrieval, context formatting, and LLM inference - **Context Formatter:** Structures multi-node relationships into LLM-ingestible text
+Data Models
+Node: Document ID, title, text snippet, metadata (tags, recency, frontmatter)
+
+Edge: Type (link, tag, cluster), weight, direction
+
+Graph: Adjacency list or Neo4j-like structure
+
+APIs and Integrations
+Internal API for query(text: str, mode: str, parameters: dict)
+
+Optional: integration with vector DB (e.g., FAISS, Weaviate)
+
+Optional: integration with visualization tools (e.g., D3.js, Cytoscape)
+
+Infrastructure Requirements
+Python backend with networkx or Neo4j for graph
+
+Vector store (e.g., FAISS, Qdrant)
+
+LLM endpoint (OpenAI, local, or hosted model)
+
+Optional frontend dashboard
+
+Development Roadmap
+MVP
+Graph builder with backlinks, tags, metadata, and weights
+
+Basic graph retriever with k-hop and path discovery
+
+Context formatter with simple relationship template
+
+Hybrid retriever with candidate generation and re-ranking
+
+RAG pipeline query method supporting hybrid mode
+
+Unit and integration tests with Obsidian-like sample vault
+
+Future Enhancements
+Recency bias tuning and time-decay scoring
+
+Graph learning: use node2vec or GNNs to embed structure
+
+Live visualization of graph context per query
+
+Relevance feedback loop for fine-tuning weights
+
+Query-type detection and dynamic retrieval strategy selection
+
+Logical Dependency Chain
+Graph Construction Engine
+
+Graph-Based Retriever
+
+Context Formatter for Graph Output
+
+Hybrid Retriever (graph + vector re-ranking)
+
+Unified RAGPipeline Integration
+
+Unit Tests → End-to-End Integration
+
+Evaluation + Parameter Tuning
+
+Documentation + Usage Examples
+
+Optional Visualization Layer
+
+Risks and Mitigations
+Technical
+Risk: Graph retrieval adds latency
+Mitigation: Precompute traversals or cache results
+
+Risk: Poor context formatting reduces LLM accuracy
+Mitigation: Iterative template testing + prompt engineering
+
+MVP Scope
+Risk: Overbuild with unused graph features
+Mitigation: Start with backlinks + tags only, expand later
+
+Resource Constraints
+Risk: Dataset or domain mismatch
+Mitigation: Use synthetic Obsidian vaults or real markdown data for test coverage
+
+Appendix
+Based on prior completed task list
+
+Evaluation metric suggestions: MRR, precision@k, recall@k
+
+Sample graph traversal config:
+
+json
+Copy
+Edit
+{
+  "entry_point": "keyword_search",
+  "k_hop": 2,
+  "weighting": {
+    "backlink": 1.0,
+    "tag": 0.75,
+    "path": 0.5
+  },
+  "recency_bias": true
+}
+</PRD>

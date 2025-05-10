@@ -17,6 +17,7 @@ import shutil
 from .graph_retriever import GraphRetriever
 from .conversation_memory import ConversationMemory
 import json
+import re
 
 # Add a custom JSON encoder to handle dates
 class CustomJSONEncoder(json.JSONEncoder):
@@ -59,7 +60,7 @@ class RAGPipeline:
             try:
                 self.logger.info(f"Loading existing index from {self.index_path}")
                 self.index = faiss.read_index(str(self.index_path))
-                with open(self.embeddings_path, 'r') as f:
+                with open(self.embeddings_path, 'r', encoding='utf-8') as f:
                     self.doc_embeddings = json.load(f)
                 
                 # Populate document_store from loaded embeddings metadata
@@ -79,10 +80,25 @@ class RAGPipeline:
                 document_store_path = self.embeddings_path.parent / "document_store.json"
                 if document_store_path.exists():
                     self.logger.info(f"Loading document store from {document_store_path}")
-                    with open(document_store_path, 'r') as f:
-                        self.document_store = json.load(f)
-                        # Ensure keys are strings if Faiss IDs are used as keys directly
-                        self.document_store = {str(k): v for k, v in self.document_store.items()} 
+                    try:
+                        with open(document_store_path, 'r', encoding='utf-8') as f:
+                            self.document_store = json.load(f)
+                            # Ensure keys are strings if Faiss IDs are used as keys directly
+                            self.document_store = {str(k): v for k, v in self.document_store.items()}
+                            
+                            # Check for and extract dates from paths for existing documents
+                            self._populate_missing_dates_from_paths()
+                    except UnicodeDecodeError as ude:
+                        self.logger.error(f"Unicode decode error loading document store: {str(ude)}")
+                        # Try loading with a more permissive encoding that replaces invalid characters
+                        self.logger.info("Attempting to load document store with errors='replace'")
+                        with open(document_store_path, 'r', encoding='utf-8', errors='replace') as f:
+                            self.document_store = json.load(f)
+                            # Ensure keys are strings if Faiss IDs are used as keys directly
+                            self.document_store = {str(k): v for k, v in self.document_store.items()}
+                            
+                            # Check for and extract dates from paths for existing documents
+                            self._populate_missing_dates_from_paths()
                 else:
                      self.logger.warning(f"Document store file not found at {document_store_path}. Document content will be unavailable unless re-indexed.")
                      self.document_store = {} # Ensure it's initialized if file not found
@@ -117,7 +133,7 @@ class RAGPipeline:
                     # Save the index and embeddings
                     try:
                         self._save_index(self.index_path)
-                        with open(self.embeddings_path, 'w') as f:
+                        with open(self.embeddings_path, 'w', encoding='utf-8') as f:
                             json.dump(self.doc_embeddings, f)
                         # Save the document store as well
                         document_store_path = self.embeddings_path.parent / "document_store.json"
@@ -126,6 +142,7 @@ class RAGPipeline:
                         if document_store_path.exists():
                             try:
                                 shutil.copy2(document_store_path, backup_path)
+                                self.logger.info(f"Created backup of document store at {backup_path}")
                             except Exception as e:
                                 self.logger.warning(f"Failed to create backup: {str(e)}")
                         
@@ -180,8 +197,9 @@ class RAGPipeline:
     def _init_faiss(self) -> faiss.Index:
         """Initialize FAISS index"""
         try:
-            dimension = self.config["vector_store"]["dimension"]
-            index_path = self.config["vector_store"]["index_path"]
+            # Ensure there's a valid dimension in the config
+            dimension = self.config.get("vector_store", {}).get("dimension", 1536)
+            index_path = self.config.get("vector_store", {}).get("index_path", "data/vector_store/faiss.index")
             
             # Convert to Path object and resolve
             index_path = Path(index_path).resolve()
@@ -217,17 +235,21 @@ class RAGPipeline:
             
         except Exception as e:
             self.logger.error(f"Failed to initialize FAISS index: {str(e)}")
-            # Create an in-memory index as fallback
-            self.logger.info("Creating in-memory index as fallback")
-            return faiss.IndexFlatIP(self.config["vector_store"]["dimension"])
+            # Create an in-memory index as fallback with default dimension
+            self.logger.info("Creating in-memory index as fallback with dimension 1536")
+            return faiss.IndexFlatIP(1536)  # Default OpenAI embedding dimension
     
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
     def _embed_openai(self, texts: List[str]) -> np.ndarray:
         """Get embeddings using OpenAI API"""
         try:
+            # Get embedding model from config, with fallback
+            model = self.config.get("embeddings", {}).get("model", "text-embedding-ada-002")
+            self.logger.info(f"Using OpenAI embedding model: {model}")
+            
             response = self.client.embeddings.create(
                 input=texts,
-                model=self.config["embeddings"]["model"]
+                model=model
             )
             return np.array([e.embedding for e in response.data])
         except Exception as e:
@@ -249,12 +271,72 @@ class RAGPipeline:
                             query_text = texts[0].lower()
                             # Return a fallback embedding that's all zeros except for a signature value
                             # This is not a real embedding but a placeholder to avoid breaking downstream code
-                            fallback_dim = self.config["vector_store"]["dimension"]
+                            fallback_dim = self.config.get("vector_store", {}).get("dimension", 1536)
                             return np.zeros((1, fallback_dim))
                     except Exception as fallback_e:
                         self.logger.error(f"Fallback embedding method failed: {str(fallback_e)}")
             raise
     
+    def _extract_date_from_path(self, path: str) -> dict:
+        """
+        Extract date information from a file path with format YYYY-MM-DD
+        Returns a dictionary with extracted date components or empty dict if no match
+        """
+        date_info = {}
+        
+        # Try to extract from the last part of the path (filename)
+        filename = os.path.basename(path)
+        # Remove extension
+        filename_without_ext = os.path.splitext(filename)[0]
+        
+        # Match YYYY-MM-DD pattern in filename
+        date_pattern = r'(\d{4})-(\d{2})-(\d{2})'
+        match = re.search(date_pattern, filename_without_ext)
+        
+        if not match:
+            # If not found in filename, try to find in directory structure
+            # Look for patterns like .../2023/04/... or .../2023-04/...
+            dir_pattern1 = r'[/\\](\d{4})[/\\](\d{2})[/\\]'  # .../2023/04/...
+            dir_pattern2 = r'[/\\](\d{4})-(\d{2})[/\\]'      # .../2023-04/...
+            
+            dir_match1 = re.search(dir_pattern1, path)
+            if dir_match1:
+                year, month = dir_match1.groups()
+                
+                # Try to extract day from filename if it's numeric
+                day_match = re.search(r'^(\d{1,2})', filename_without_ext)
+                day = day_match.group(1).zfill(2) if day_match else "01"  # Default to first day if not found
+                
+                match = (year, month, day)
+            else:
+                dir_match2 = re.search(dir_pattern2, path)
+                if dir_match2:
+                    year, month = dir_match2.groups()
+                    # Default to first day of month
+                    match = (year, month, "01")
+        
+        if match:
+            year, month, day = match if isinstance(match, tuple) else match.groups()
+            # Create ISO format date string
+            date_str = f"{year}-{month}-{day}"
+            
+            try:
+                # Create datetime object to validate date is legit
+                date_obj = datetime.fromisoformat(date_str)
+                
+                # Add date components to metadata
+                date_info['date'] = date_str
+                date_info['year'] = year
+                date_info['month'] = month
+                date_info['day'] = day
+                date_info['created'] = date_str
+                
+                self.logger.info(f"Extracted date {date_str} from path {path}")
+            except ValueError:
+                self.logger.warning(f"Found date-like pattern in {path} but date is invalid")
+                
+        return date_info
+
     def _process_batch(self, batch: List[Dict[str, Any]], batch_idx: int) -> Tuple[np.ndarray, List[Dict[str, Any]]]:
         """Process a single batch of documents"""
         try:
@@ -266,6 +348,15 @@ class RAGPipeline:
             processed_docs = []
             for j, doc in enumerate(batch):
                 doc_id = str(len(self.document_store) + (batch_idx * self.batch_size) + j)
+                
+                # If the document has a path, try to extract date information
+                if 'metadata' in doc and 'path' in doc['metadata']:
+                    # Extract date from path and add to metadata
+                    date_info = self._extract_date_from_path(doc['metadata']['path'])
+                    if date_info:
+                        # Merge with existing metadata
+                        doc['metadata'].update(date_info)
+                
                 self.document_store[doc_id] = {
                     'content': doc['content'],
                     'metadata': doc['metadata']
@@ -433,7 +524,7 @@ class RAGPipeline:
             # Save index and embeddings
             try:
                 self._save_index(self.index_path)
-                with open(self.embeddings_path, 'w') as f:
+                with open(self.embeddings_path, 'w', encoding='utf-8') as f:
                     json.dump(self.doc_embeddings, f)
                 # Save the document store as well
                 document_store_path = self.embeddings_path.parent / "document_store.json"
@@ -442,6 +533,7 @@ class RAGPipeline:
                 if document_store_path.exists():
                     try:
                         shutil.copy2(document_store_path, backup_path)
+                        self.logger.info(f"Created backup of document store at {backup_path}")
                     except Exception as e:
                         self.logger.warning(f"Failed to create backup: {str(e)}")
                 
@@ -481,6 +573,164 @@ class RAGPipeline:
             self.logger.error(f"Indexing failed: {str(e)}")
             raise
 
+    def _deduplicate_internal_links(self, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Deduplicate internal_links in each search result's metadata
+        Only process results that have metadata with internal_links
+        """
+        for result in results:
+            # Skip if metadata or internal_links don't exist
+            if not result.get('metadata') or 'internal_links' not in result['metadata']:
+                continue
+                
+            internal_links = result['metadata']['internal_links']
+            if not internal_links or not isinstance(internal_links, list):
+                continue
+                
+            # Deduplicate case-insensitively 
+            links_lower_dict = {}
+            for link in internal_links:
+                link_lower = link.lower()
+                # If we haven't seen this link yet, or this one has a better case format, keep it
+                if link_lower not in links_lower_dict:
+                    links_lower_dict[link_lower] = link
+            
+            # Replace with deduplicated list
+            if links_lower_dict:
+                result['metadata']['internal_links'] = list(links_lower_dict.values())
+            else:
+                # Remove the key if empty to save space
+                del result['metadata']['internal_links']
+                
+        return results
+
+    def _preprocess_query(self, query: str) -> Dict[str, Any]:
+        """
+        Preprocess the query to extract semantic meaning and special filters
+        
+        Returns:
+            Dictionary containing extracted information and enhanced query
+        """
+        query_info = {
+            "original_query": query,
+            "enhanced_query": query,
+            "extracted_year": None,
+            "extracted_date": None,
+            "date_range": {
+                "start_date": None,
+                "end_date": None
+            },
+            "path_filters": []
+        }
+        
+        # Extract year references (e.g., "in 2023", "from 2022", "during 2021")
+        year_pattern = r'\b(in|from|during|for|about|of)\s+(\d{4})\b'
+        year_match = re.search(year_pattern, query, re.IGNORECASE)
+        
+        if year_match:
+            year = year_match.group(2)
+            query_info["extracted_year"] = year
+            self.logger.info(f"Extracted year from query: {year}")
+            
+            # Add path filter for folders containing this year
+            query_info["path_filters"].append(f"/{year}/")
+            query_info["path_filters"].append(f"\\{year}\\")  # Windows path format
+            
+            # Set date range for the entire year
+            start_date = datetime(int(year), 1, 1, tzinfo=timezone.utc)
+            end_date = datetime(int(year), 12, 31, 23, 59, 59, tzinfo=timezone.utc)
+            query_info["date_range"]["start_date"] = start_date
+            query_info["date_range"]["end_date"] = end_date
+            
+        return query_info
+    
+    def _apply_path_filtering(self, results: List[Dict[str, Any]], path_filters: List[str]) -> List[Dict[str, Any]]:
+        """
+        Filter or boost results based on path patterns
+        """
+        if not path_filters:
+            return results
+            
+        # First pass: check if any results match the path filters
+        matching_results = []
+        for result in results:
+            path = result.get('metadata', {}).get('path', '')
+            if any(filter_pattern in path for filter_pattern in path_filters):
+                # These are exact matches to our path pattern, give a boost
+                result['score'] = result['score'] * 1.5  # 50% boost
+                matching_results.append(result)
+        
+        # If we found matches, prioritize them but keep others
+        if matching_results:
+            # Keep other results but add them after matching results
+            non_matching = [r for r in results if r not in matching_results]
+            return matching_results + non_matching
+        
+        # If no exact matches, return original results
+        return results
+
+    def _find_documents_by_year(self, year: str, limit: int = 5) -> List[Dict[str, Any]]:
+        """
+        Directly find documents from a specific year based on path and metadata
+        Used as a fallback when semantic search doesn't find relevant content
+        """
+        results = []
+        year_pattern = f"/{year}/"
+        alt_year_pattern = f"\\{year}\\"  # Windows path alternative
+        
+        # Check each document in store for year pattern in path or year in metadata
+        for doc_id, doc in self.document_store.items():
+            path = doc.get('metadata', {}).get('path', '')
+            
+            # Check if year is in path
+            year_in_path = year_pattern in path or alt_year_pattern in path
+            
+            # Check if year is in metadata fields
+            year_in_metadata = False
+            metadata = doc.get('metadata', {})
+            
+            # Check if the year matches explicitly stored year field
+            if metadata.get('year') == year:
+                year_in_metadata = True
+            
+            # Check for year in date string fields
+            for date_field in ['created', 'modified', 'date']:
+                if date_field in metadata and metadata[date_field]:
+                    date_str = str(metadata[date_field])
+                    if year in date_str:
+                        year_in_metadata = True
+                        break
+            
+            # If year is found in path or metadata, add to results
+            if year_in_path or year_in_metadata:
+                results.append({
+                    'content': doc['content'],
+                    'metadata': doc['metadata'],
+                    'score': 0.95 if year_in_path else 0.8  # Higher score if in path
+                })
+        
+        # Sort by score and limit results
+        results.sort(key=lambda x: x['score'], reverse=True)
+        return results[:limit]
+        
+    def _symbolic_search(self, tags: Optional[List[str]] = None, 
+                        start_date: Optional[datetime] = None, 
+                        end_date: Optional[datetime] = None,
+                        year: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Symbolic (non-vector) search based on tags, dates, and paths"""
+        
+        # Placeholder for a proper symbolic search implementation
+        results = []
+        
+        # Special case for year-based queries (direct path/metadata search)
+        if year:
+            year_results = self._find_documents_by_year(year)
+            if year_results:
+                results.extend(year_results)
+                self.logger.info(f"Found {len(year_results)} documents directly by year {year}")
+        
+        return results
+
     def query(
         self,
         query: str,
@@ -489,7 +739,8 @@ class RAGPipeline:
         conversation_memory: Optional[ConversationMemory] = None,
         tags: Optional[List[str]] = None,
         start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None
+        end_date: Optional[datetime] = None,
+        retrieval_mode: str = "vector"
     ) -> Dict[str, Any]:
         """
         Query the RAG pipeline with conversation memory and filtering options
@@ -502,6 +753,18 @@ class RAGPipeline:
             if not session_id:
                 session_id = str(int(time.time()))
             
+            # Preprocess query to extract semantic meaning, years, dates
+            query_info = self._preprocess_query(query)
+            
+            # Override date parameters if extracted from query and not explicitly provided
+            if not start_date and query_info["date_range"]["start_date"]:
+                start_date = query_info["date_range"]["start_date"]
+                self.logger.info(f"Using start_date from query: {start_date}")
+                
+            if not end_date and query_info["date_range"]["end_date"]:
+                end_date = query_info["date_range"]["end_date"]
+                self.logger.info(f"Using end_date from query: {end_date}")
+                
             # Get conversation context
             conversation_context = conversation_memory.get_context_window(session_id) if session_id else ""
             self.logger.info(f"Session [{session_id}] Context window retrieved.") # Log context retrieval
@@ -525,8 +788,14 @@ class RAGPipeline:
                 })
             self.logger.info(f"Session [{session_id}] Initial semantic results count: {len(semantic_results)}") # Log initial count
             
+            # Apply path-based filtering from query preprocessing
+            if query_info["path_filters"]:
+                semantic_results = self._apply_path_filtering(semantic_results, query_info["path_filters"])
+                self.logger.info(f"Session [{session_id}] Results after path filtering: {len(semantic_results)}")
+            
             # --- Filtering Logic (Tags and Dates) ---
             filtered_results = semantic_results
+            
             # Apply tag filtering if specified
             if tags:
                 self.logger.info(f"Session [{session_id}] Filtering results by tags: {tags}")
@@ -575,8 +844,13 @@ class RAGPipeline:
             # Get symbolic search results (if tags or dates specified)
             # Placeholder: Symbolic search currently returns empty
             symbolic_results = [] 
-            if tags or start_date or end_date:
-                 symbolic_results = self._symbolic_search(tags, start_date, end_date)
+            if tags or start_date or end_date or query_info["extracted_year"]:
+                 symbolic_results = self._symbolic_search(
+                     tags, 
+                     start_date, 
+                     end_date,
+                     query_info["extracted_year"]
+                 )
             
             # Combine results (Placeholder: currently just uses filtered semantic results)
             final_results = filtered_results # Replace/augment with combined results if symbolic search is implemented
@@ -606,9 +880,35 @@ class RAGPipeline:
             for i, result in enumerate(final_results):
                 doc_path = result['metadata'].get('path', f'doc_{i}')
                 connections = graph_context_map.get(doc_path, [])
-                connections_str = ', '.join(connections) if connections else 'None'
+                connections_str = ', '.join([f'"{conn}"' for conn in connections]) if connections else 'None'
+                
+                # Include more detailed metadata for date-based queries
+                metadata = result['metadata']
+                metadata_parts = []
+                
+                # Add title
+                metadata_parts.append(f"title: {metadata.get('title', 'Untitled')}")
+                
+                # Add tags if present
+                if 'tags' in metadata and metadata['tags']:
+                    metadata_parts.append(f"tags: {', '.join(metadata['tags'][:5])}")
+                
+                # Add date info if present
+                for date_field in ['created', 'modified', 'date']:
+                    if date_field in metadata and metadata[date_field]:
+                        metadata_parts.append(f"{date_field}: {metadata[date_field]}")
+                
+                # Add year/month/day if present (important for date queries)
+                for time_field in ['year', 'month', 'day']:
+                    if time_field in metadata and metadata[time_field]:
+                        metadata_parts.append(f"{time_field}: {metadata[time_field]}")
+                
+                # Format metadata
+                metadata_str = ", ".join(metadata_parts)
+                
+                # Create the full context entry
                 context_parts.append(
-                    f"Source {i+1} (Path: {doc_path}):\n{result['content']}\nConnections: {connections_str}"
+                    f"Source {i+1} (Path: {doc_path}):\n{result['content']}\nMetadata: {metadata_str}\nConnections: {connections_str}"
                 )
             context = "\n\n".join(context_parts)
             self.logger.info(f"Session [{session_id}] Context generated for LLM (length: {len(context)}):\n"
@@ -619,8 +919,16 @@ class RAGPipeline:
             # Build messages for chat completion
             messages = [
                 {"role": "system", "content": """You are a helpful assistant that synthesizes information from multiple sources and maintains context across conversations. 
+When responding to date-based queries (e.g., "What happened in 2023?"), pay special attention to:
+1. File paths that contain date information (e.g., "2023/04/file.md")
+2. Date metadata fields (created, modified, date, year, month, day)
+3. Content that mentions specific dates or timeframes
+
 Pay attention to the graph connections between sources and explain how they relate to each other.
-When referring to previous conversations, be natural and contextual in your responses."""},
+When referring to previous conversations, be natural and contextual in your responses.
+
+For year-based queries, organize your response chronologically if possible, and explicitly mention timeframes.
+Be specific about what information comes from which source files."""},
             ]
             
             # Add conversation history if available
@@ -628,11 +936,95 @@ When referring to previous conversations, be natural and contextual in your resp
                 messages.append({"role": "system", "content": f"Previous conversation context:\n{conversation_context}"})
             
             # Add current query and context
-            messages.append({"role": "user", "content": f"Question: {query}\n\nContext:\n{context}\n\nPlease provide a comprehensive answer based on the sources above, highlighting any connections between them and relating to our previous conversation where relevant."})
+            user_content = f"Question: {query}\n\nContext:\n{context}\n\nPlease provide a comprehensive answer based on the sources above, highlighting any connections between them and relating to our previous conversation where relevant."
+            
+            # Check token count and truncate context if needed
+            try:
+                # Import tiktoken for token counting
+                import tiktoken
+                
+                # Get the encoding for the model we're using
+                model = self.config.get("chat_model", "gpt-4-turbo-preview")
+                try:
+                    encoding = tiktoken.encoding_for_model(model)
+                except KeyError:
+                    # Fallback to cl100k_base encoding if the model is not found
+                    encoding = tiktoken.get_encoding("cl100k_base")
+                
+                # Count tokens in system message
+                system_tokens = len(encoding.encode(messages[0]["content"]))
+                
+                # Count tokens in conversation context if present
+                conv_context_tokens = 0
+                if conversation_context:
+                    conv_context_tokens = len(encoding.encode(f"Previous conversation context:\n{conversation_context}"))
+                
+                # Count tokens in query
+                query_tokens = len(encoding.encode(f"Question: {query}\n\n"))
+                
+                # Count tokens in final instruction
+                final_instruction_tokens = len(encoding.encode("\n\nPlease provide a comprehensive answer based on the sources above, highlighting any connections between them and relating to our previous conversation where relevant."))
+                
+                # Calculate how many tokens we have available for the context
+                # Reserve 1000 tokens for the response as per the max_tokens parameter
+                # Add 100 tokens as buffer
+                max_total_tokens = 8192  # OpenAI's context limit
+                available_context_tokens = max_total_tokens - system_tokens - conv_context_tokens - query_tokens - final_instruction_tokens - 1000 - 100
+                
+                # Count tokens in the context
+                context_tokens = len(encoding.encode(f"Context:\n{context}"))
+                
+                # If context is too large, truncate it
+                if context_tokens > available_context_tokens and available_context_tokens > 0:
+                    self.logger.warning(f"Context too large ({context_tokens} tokens). Truncating to {available_context_tokens} tokens.")
+                    
+                    # Split the context into individual documents
+                    context_docs = context.split("\n\n[")
+                    if len(context_docs) > 1:
+                        # First item doesn't start with [, so handle it separately
+                        truncated_context = [context_docs[0]]
+                        
+                        remaining_tokens = available_context_tokens - len(encoding.encode(context_docs[0]))
+                        
+                        # Add documents one by one until we reach the token limit
+                        for doc in context_docs[1:]:
+                            # Add back the "[" that was removed during splitting
+                            doc_text = "[" + doc
+                            doc_tokens = len(encoding.encode(doc_text))
+                            
+                            if remaining_tokens >= doc_tokens:
+                                truncated_context.append(doc_text)
+                                remaining_tokens -= doc_tokens
+                            else:
+                                # No more room for complete documents
+                                break
+                        
+                        # Join the truncated context
+                        context = "\n\n".join(truncated_context)
+                        
+                        # Add a note about truncation
+                        if len(truncated_context) < len(context_docs):
+                            truncation_note = "\n\n[Note: Some documents were omitted due to context length limitations.]"
+                            truncation_note_tokens = len(encoding.encode(truncation_note))
+                            
+                            if remaining_tokens >= truncation_note_tokens:
+                                context += truncation_note
+                        
+                        # Update the user content with truncated context
+                        user_content = f"Question: {query}\n\nContext:\n{context}\n\nPlease provide a comprehensive answer based on the sources above, highlighting any connections between them and relating to our previous conversation where relevant."
+                        
+                        self.logger.info(f"Context truncated to {len(encoding.encode(context))} tokens ({len(truncated_context)} of {len(context_docs)} documents).")
+            except ImportError:
+                self.logger.warning("tiktoken not available, skipping token counting and truncation")
+            except Exception as e:
+                self.logger.warning(f"Error during token counting and truncation: {str(e)}")
+            
+            # Add the user message with possibly truncated context
+            messages.append({"role": "user", "content": user_content})
             
             # Generate response
             response = self.client.chat.completions.create(
-                model=self.config.get("chat_model", "gpt-4"),
+                model=self.config.get("chat_model", "gpt-4-turbo-preview"),
                 messages=messages,
                 temperature=0.7,
                 max_tokens=1000
@@ -648,28 +1040,19 @@ When referring to previous conversations, be natural and contextual in your resp
             except Exception as e:
                 self.logger.warning(f"Failed to store conversation: {str(e)}")
             
+            # Deduplicate internal_links in results before returning
+            final_results = self._deduplicate_internal_links(final_results)
+            
             return {
                 "response": response.choices[0].message.content,
                 "sources": final_results,
-                "session_id": session_id
+                "session_id": session_id,
+                "context": context  # Include the context for debugging
             }
             
         except Exception as e:
             self.logger.error(f"Query failed: {str(e)}")
             raise HTTPException(status_code=500, detail=str(e))
-        
-    def _symbolic_search(
-        self,
-        tags: Optional[List[str]] = None,
-        start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None
-    ) -> List[Dict[str, Any]]:
-        """
-        Search using symbolic features (tags, dates, links)
-        """
-        # Implement symbolic graph traversal
-        # This is a placeholder - implement actual logic
-        return []
         
     def _combine_results(
         self,
@@ -705,3 +1088,16 @@ When referring to previous conversations, be natural and contextual in your resp
         )
         
         return response.choices[0].message.content 
+
+    def _populate_missing_dates_from_paths(self):
+        for doc_id, doc in self.document_store.items():
+            path = doc['metadata'].get('path', '')
+            if path:
+                date_info = self._extract_date_from_path(path)
+                if date_info:
+                    doc['metadata'].update(date_info)
+                    self.logger.info(f"Updated metadata for document {doc_id} with date information")
+                else:
+                    self.logger.warning(f"No date information found for document {doc_id} with path: {path}")
+            else:
+                self.logger.warning(f"Document {doc_id} has no path in metadata") 

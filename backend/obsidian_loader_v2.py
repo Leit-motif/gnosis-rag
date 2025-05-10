@@ -60,24 +60,70 @@ class ObsidianLoaderV2:
         metadata = dict(content.metadata)
         
         # Extract tags from content and metadata
-        tags = set(metadata.get('tags', []))
-        hashtag_pattern = r'#([^\s#]+)'
-        content_tags = re.findall(hashtag_pattern, content.content)
-        tags.update(content_tags)
+        tags = set()
+        if 'tags' in metadata:
+            if isinstance(metadata['tags'], list):
+                tags.update(t.strip() for t in metadata['tags'])
+            elif isinstance(metadata['tags'], str):
+                tags.update(t.strip() for t in metadata['tags'].split(","))
         
-        # Extract links
-        internal_link_pattern = r'\[\[(.*?)\]\]'
+        # Extract hashtags from content - filter out code blocks and URLs
+        content_text = content.content
+        # Remove code blocks
+        content_no_code = re.sub(r'`[^`]*`', '', content_text)
+        # Remove URLs
+        content_filtered = re.sub(r'https?://\S+', '', content_no_code)
+        
+        # Extract tags
+        hashtag_pattern = r'(?<!\w)#([a-zA-Z0-9_/-]+)'
+        content_tags = re.findall(hashtag_pattern, content_filtered)
+        tags.update(t.strip() for t in content_tags)
+        
+        # Deduplicate tags case-insensitively
+        tags_lower_dict = {}
+        for tag in tags:
+            tag_lower = tag.lower()
+            # If we already have this tag in a different case, prefer the frontmatter version
+            # or the first one we encountered
+            if tag_lower not in tags_lower_dict:
+                tags_lower_dict[tag_lower] = tag
+        
+        # Convert back to a list of unique tags
+        unique_tags = list(tags_lower_dict.values())
+        
+        # Extract links (deduplicated)
+        internal_link_pattern = r'\[\[([^\]\|]+)(?:\|[^\]]+)?\]\]'
         markdown_link_pattern = r'\[([^\]]+)\]\(([^)]+)\)'
+        
+        # Extract internal links
         internal_links = re.findall(internal_link_pattern, content.content)
+        
+        # Deduplicate internal links case-insensitively
+        links_lower_dict = {}
+        for link in internal_links:
+            link_stripped = link.strip()
+            link_lower = link_stripped.lower()
+            # Only add if not already added in a different case
+            if link_lower not in links_lower_dict:
+                links_lower_dict[link_lower] = link_stripped
+        
+        # Extract markdown links
         markdown_links = re.findall(markdown_link_pattern, content.content)
         
-        # Build metadata dict
+        # Clean up internal links that are duplicated in tags
+        internal_links_deduped = []
+        for link in links_lower_dict.values():
+            # Only add if not already a tag (case-insensitive comparison)
+            if link.lower() not in tags_lower_dict:
+                internal_links_deduped.append(link)
+        
+        # Build metadata dict with deduplicated lists
         return {
             'title': metadata.get('title', file_path.stem),
-            'tags': list(tags),
+            'tags': unique_tags,
             'created': metadata.get('created', None),
             'modified': metadata.get('modified', None),
-            'internal_links': internal_links,
+            'internal_links': internal_links_deduped,  # Deduplicated internal links
             'markdown_links': [link[1] for link in markdown_links],
             'link_titles': [link[0] for link in markdown_links],
             'path': str(file_path.relative_to(self.vault_path)),
@@ -104,22 +150,8 @@ class ObsidianLoaderV2:
                 metadata["month"] = date_str[5:7]
                 metadata["day"] = date_str[8:10]
             
-            # Extract tags from content (both frontmatter and inline)
-            tags = set()
-            
-            # Get tags from frontmatter
-            if "tags" in content.metadata:
-                if isinstance(content.metadata["tags"], list):
-                    tags.update(content.metadata["tags"])
-                elif isinstance(content.metadata["tags"], str):
-                    tags.update(tag.strip() for tag in content.metadata["tags"].split(","))
-            
-            # Get inline tags
-            inline_tags = re.findall(r'\[\[(.*?)\]\]', content.content)
-            tags.update(tag.strip() for tag in inline_tags)
-            
-            # Add tags to metadata
-            metadata["tags"] = list(tags)
+            # We'll use the existing tags from extract_metadata and not re-extract them
+            # The tags are already deduplicated and processed in the extract_metadata method
             
             # Split content into chunks using markdown splitter
             try:

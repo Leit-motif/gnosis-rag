@@ -1,0 +1,17 @@
+{
+    "vault": {
+        "path": "./data",
+        "exclude_folders": [".git", ".obsidian", "node_modules"],
+        "file_extensions": [".md"]
+    },
+    "vector_store": {
+        "type": "chroma",
+        "collection_name": "obsidian_vault",
+        "embedding_model": "all-MiniLM-L6-v2"
+    },
+    "rag_pipeline": {
+        "chunk_size": 1000,
+        "chunk_overlap": 200,
+        "max_documents": 5
+    }
+} 
