@@ -1,0 +1,131 @@
+{
+  "timestamp": "2025-05-31 18:53:22",
+  "system_info": {
+    "cpu_count": 16,
+    "memory_total_gb": 31.91640853881836,
+    "python_version": "3.10.6 (tags/v3.10.6:9c7b4bd, Aug  1 2022, 21:53:49) [MSC v.1932 64 bit (AMD64)]"
+  },
+  "document_loading": {
+    "time_seconds": 3.045919179916382,
+    "documents_loaded": 50
+  },
+  "standard_pipeline": {
+    "total_documents": 50,
+    "processing_time": 0.46985363960266113,
+    "documents_per_second": 106.41611724511331,
+    "embeddings_per_second": 106.41611724511331,
+    "peak_memory_mb": 0,
+    "avg_cpu_percent": 0,
+    "peak_cpu_percent": 0,
+    "document_loading_time": 0,
+    "preprocessing_time": 0,
+    "embedding_generation_time": 0,
+    "index_creation_time": 0,
+    "storage_time": 0,
+    "api_call_count": 0,
+    "avg_api_latency": 0,
+    "batch_size_used": 150,
+    "concurrent_requests": 4
+  },
+  "fast_pipeline": {
+    "total_documents": 50,
+    "processing_time": 0.8669593334197998,
+    "documents_per_second": 57.6728320148195,
+    "embeddings_per_second": 57.6728320148195,
+    "peak_memory_mb": 0,
+    "avg_cpu_percent": 0,
+    "peak_cpu_percent": 0,
+    "document_loading_time": 0,
+    "preprocessing_time": 0,
+    "embedding_generation_time": 0,
+    "index_creation_time": 0,
+    "storage_time": 0,
+    "api_call_count": 0,
+    "avg_api_latency": 0,
+    "batch_size_used": 150,
+    "concurrent_requests": 15
+  },
+  "comparison": {
+    "speed_improvement_factor": 0.5419558005671163,
+    "memory_usage_difference_mb": 0,
+    "time_reduction_percent": -84.51689214389339
+  },
+  "bottleneck_analysis": {
+    "top_time_consumers": [
+      {
+        "pipeline": "standard_pipeline",
+        "functions": [
+          {
+            "function": "C:\\Users\\Rando\\Workspaces\\gnosis-rag\\backend\\rag_pipeline.py:564(index_documents)",
+            "cumulative_time": 0.47034390000000004,
+            "calls": 1,
+            "per_call": 0.47034390000000004
+          },
+          {
+            "function": "C:\\Users\\Rando\\AppData\\Local\\Programs\\Python\\Python310\\lib\\threading.py:589(wait)",
+            "cumulative_time": 0.4623551,
+            "calls": 3,
+            "per_call": 0.15411836666666667
+          },
+          {
+            "function": "C:\\Users\\Rando\\AppData\\Local\\Programs\\Python\\Python310\\lib\\threading.py:288(wait)",
+            "cumulative_time": 0.46234450000000005,
+            "calls": 4,
+            "per_call": 0.11558612500000001
+          },
+          {
+            "function": "~:0(<method 'acquire' of '_thread.lock' objects>)",
+            "cumulative_time": 0.4623377,
+            "calls": 17,
+            "per_call": 0.02719633529411765
+          },
+          {
+            "function": "C:\\Users\\Rando\\AppData\\Local\\Programs\\Python\\Python310\\lib\\concurrent\\futures\\_base.py:201(as_completed)",
+            "cumulative_time": 0.46104280000000003,
+            "calls": 2,
+            "per_call": 0.23052140000000002
+          }
+        ]
+      },
+      {
+        "pipeline": "fast_pipeline",
+        "functions": [
+          {
+            "function": "C:\\Users\\Rando\\AppData\\Local\\Programs\\Python\\Python310\\lib\\asyncio\\runners.py:8(run)",
+            "cumulative_time": 0.8672219000000001,
+            "calls": 1,
+            "per_call": 0.8672219000000001
+          },
+          {
+            "function": "C:\\Users\\Rando\\AppData\\Local\\Programs\\Python\\Python310\\lib\\asyncio\\base_events.py:610(run_until_complete)",
+            "cumulative_time": 0.8663709,
+            "calls": 3,
+            "per_call": 0.2887903
+          },
+          {
+            "function": "C:\\Users\\Rando\\AppData\\Local\\Programs\\Python\\Python310\\lib\\asyncio\\windows_events.py:317(run_forever)",
+            "cumulative_time": 0.8662738000000001,
+            "calls": 3,
+            "per_call": 0.2887579333333334
+          },
+          {
+            "function": "C:\\Users\\Rando\\AppData\\Local\\Programs\\Python\\Python310\\lib\\asyncio\\base_events.py:587(run_forever)",
+            "cumulative_time": 0.8661937000000001,
+            "calls": 3,
+            "per_call": 0.28873123333333334
+          },
+          {
+            "function": "C:\\Users\\Rando\\AppData\\Local\\Programs\\Python\\Python310\\lib\\asyncio\\base_events.py:1821(_run_once)",
+            "cumulative_time": 0.8660304000000001,
+            "calls": 52,
+            "per_call": 0.01665443076923077
+          }
+        ]
+      }
+    ],
+    "memory_intensive_operations": [],
+    "api_performance": {},
+    "recommendations": []
+  },
+  "recommendations": []
+}

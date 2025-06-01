@@ -1,0 +1,122 @@
+[
+  {
+    "function": "C:\\Users\\Rando\\Workspaces\\gnosis-rag\\backend\\obsidian_loader_v2.py:180(load_vault)",
+    "cumulative_time": 3.0391413000000003,
+    "calls": 1,
+    "per_call": 3.0391413000000003
+  },
+  {
+    "function": "C:\\Users\\Rando\\Workspaces\\gnosis-rag\\backend\\obsidian_loader_v2.py:133(process_file)",
+    "cumulative_time": 2.9026034000000003,
+    "calls": 196,
+    "per_call": 0.014809201020408164
+  },
+  {
+    "function": "C:\\Users\\Rando\\Workspaces\\gnosis-rag\\venv\\lib\\site-packages\\langchain_text_splitters\\character.py:117(split_text)",
+    "cumulative_time": 1.2982854000000001,
+    "calls": 196,
+    "per_call": 0.006623905102040817
+  },
+  {
+    "function": "C:\\Users\\Rando\\Workspaces\\gnosis-rag\\venv\\lib\\site-packages\\langchain_text_splitters\\character.py:77(_split_text)",
+    "cumulative_time": 1.2976684,
+    "calls": 196,
+    "per_call": 0.006620757142857143
+  },
+  {
+    "function": "C:\\Users\\Rando\\Workspaces\\gnosis-rag\\venv\\lib\\site-packages\\langchain_text_splitters\\base.py:107(_merge_splits)",
+    "cumulative_time": 0.8687803000000001,
+    "calls": 5334,
+    "per_call": 0.00016287594675665543
+  },
+  {
+    "function": "C:\\Users\\Rando\\AppData\\Local\\Programs\\Python\\Python310\\lib\\pathlib.py:569(_parse_args)",
+    "cumulative_time": 0.7520833,
+    "calls": 35256,
+    "per_call": 2.133206546403449e-05
+  },
+  {
+    "function": "C:\\Users\\Rando\\AppData\\Local\\Programs\\Python\\Python310\\lib\\pathlib.py:56(parse_parts)",
+    "cumulative_time": 0.707404,
+    "calls": 35257,
+    "per_call": 2.006421419859886e-05
+  },
+  {
+    "function": "C:\\Users\\Rando\\AppData\\Local\\Programs\\Python\\Python310\\lib\\pathlib.py:791(relative_to)",
+    "cumulative_time": 0.5408092,
+    "calls": 17726,
+    "per_call": 3.050937605776825e-05
+  },
+  {
+    "function": "C:\\Users\\Rando\\AppData\\Local\\Programs\\Python\\Python310\\lib\\pathlib.py:957(__new__)",
+    "cumulative_time": 0.4534671,
+    "calls": 17530,
+    "per_call": 2.586806046776954e-05
+  },
+  {
+    "function": "C:\\Users\\Rando\\AppData\\Local\\Programs\\Python\\Python310\\lib\\pathlib.py:589(_from_parts)",
+    "cumulative_time": 0.43783390000000005,
+    "calls": 17530,
+    "per_call": 2.4976263548203083e-05
+  },
+  {
+    "function": "C:\\Users\\Rando\\Workspaces\\gnosis-rag\\backend\\obsidian_loader_v2.py:57(extract_metadata)",
+    "cumulative_time": 0.266593,
+    "calls": 196,
+    "per_call": 0.0013601683673469388
+  },
+  {
+    "function": "C:\\Users\\Rando\\AppData\\Local\\Programs\\Python\\Python310\\lib\\pathlib.py:147(splitroot)",
+    "cumulative_time": 0.2239626,
+    "calls": 317109,
+    "per_call": 7.062637768086053e-07
+  },
+  {
+    "function": "C:\\Users\\Rando\\AppData\\Local\\Programs\\Python\\Python310\\lib\\re.py:232(findall)",
+    "cumulative_time": 0.2147892,
+    "calls": 588,
+    "per_call": 0.00036528775510204085
+  },
+  {
+    "function": "~:0(<method 'findall' of 're.Pattern' objects>)",
+    "cumulative_time": 0.2128402,
+    "calls": 588,
+    "per_call": 0.0003619731292517007
+  },
+  {
+    "function": "C:\\Users\\Rando\\Workspaces\\gnosis-rag\\venv\\lib\\site-packages\\frontmatter\\__init__.py:140(load)",
+    "cumulative_time": 0.2126276,
+    "calls": 196,
+    "per_call": 0.001084834693877551
+  },
+  {
+    "function": "~:0(<built-in method builtins.len>)",
+    "cumulative_time": 0.18363030000000002,
+    "calls": 2146352,
+    "per_call": 8.555460614102441e-08
+  },
+  {
+    "function": "C:\\Users\\Rando\\Workspaces\\gnosis-rag\\venv\\lib\\site-packages\\langchain_text_splitters\\character.py:31(_split_text_with_regex)",
+    "cumulative_time": 0.1691705,
+    "calls": 3461,
+    "per_call": 4.8879081190407395e-05
+  },
+  {
+    "function": "C:\\Users\\Rando\\Workspaces\\gnosis-rag\\venv\\lib\\site-packages\\frontmatter\\__init__.py:168(loads)",
+    "cumulative_time": 0.1557611,
+    "calls": 196,
+    "per_call": 0.0007946994897959184
+  },
+  {
+    "function": "C:\\Users\\Rando\\Workspaces\\gnosis-rag\\venv\\lib\\site-packages\\frontmatter\\__init__.py:48(parse)",
+    "cumulative_time": 0.1442628,
+    "calls": 196,
+    "per_call": 0.000736034693877551
+  },
+  {
+    "function": "C:\\Users\\Rando\\Workspaces\\gnosis-rag\\venv\\lib\\site-packages\\frontmatter\\default_handlers.py:255(load)",
+    "cumulative_time": 0.1293951,
+    "calls": 196,
+    "per_call": 0.0006601790816326531
+  }
+]

@@ -7,8 +7,12 @@ import json
 import time
 from datetime import datetime, timedelta
 
-from .enhanced_graph_retriever import EnhancedGraphRetriever
-from .rag_pipeline import RAGPipeline
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+from enhanced_graph_retriever import EnhancedGraphRetriever
+from rag_pipeline import RAGPipeline
 
 class GraphRAGIntegration:
     """

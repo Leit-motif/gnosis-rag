@@ -1,0 +1,137 @@
+{
+  "fast_indexing": {
+    "presets": {
+      "small_vault": {
+        "description": "For vaults with <1000 documents",
+        "batch_size": 50,
+        "max_concurrent_requests": 5,
+        "embedding_timeout": 60,
+        "checkpoint_interval": 100,
+        "use_streaming": false,
+        "max_memory_mb": 1000
+      },
+      "medium_vault": {
+        "description": "For vaults with 1000-5000 documents",
+        "batch_size": 100,
+        "max_concurrent_requests": 10,
+        "embedding_timeout": 60,
+        "checkpoint_interval": 250,
+        "use_streaming": true,
+        "max_memory_mb": 2000
+      },
+      "large_vault": {
+        "description": "For vaults with 5000-20000 documents",
+        "batch_size": 150,
+        "max_concurrent_requests": 15,
+        "embedding_timeout": 90,
+        "checkpoint_interval": 500,
+        "use_streaming": true,
+        "max_memory_mb": 3000
+      },
+      "massive_vault": {
+        "description": "For vaults with >20000 documents",
+        "batch_size": 200,
+        "max_concurrent_requests": 20,
+        "embedding_timeout": 120,
+        "checkpoint_interval": 1000,
+        "use_streaming": true,
+        "max_memory_mb": 4000
+      },
+      "conservative": {
+        "description": "Safe settings to avoid rate limits",
+        "batch_size": 25,
+        "max_concurrent_requests": 3,
+        "embedding_timeout": 60,
+        "checkpoint_interval": 50,
+        "use_streaming": true,
+        "max_memory_mb": 1000,
+        "delay_between_batches": 1.0
+      }
+    },
+    "optimization_tips": {
+      "api_limits": {
+        "openai_tier_1": {
+          "rpm": 500,
+          "tpm": 30000,
+          "recommended_batch_size": 25,
+          "recommended_concurrent": 3
+        },
+        "openai_tier_2": {
+          "rpm": 5000,
+          "tpm": 150000,
+          "recommended_batch_size": 100,
+          "recommended_concurrent": 10
+        },
+        "openai_tier_3": {
+          "rpm": 10000,
+          "tpm": 1000000,
+          "recommended_batch_size": 150,
+          "recommended_concurrent": 15
+        }
+      },
+      "performance_notes": [
+        "Increase batch_size for better throughput (max ~200 for embeddings API)",
+        "Increase max_concurrent_requests if you have higher API limits",
+        "Use streaming=true for large vaults to manage memory",
+        "Lower checkpoint_interval for more frequent progress saves",
+        "Monitor OpenAI usage dashboard for rate limit optimization"
+      ],
+      "memory_optimization": [
+        "streaming=true: Process documents in chunks to save memory",
+        "Lower max_memory_mb if you have limited RAM",
+        "Checkpoints save progress to disk, allowing resume on failures",
+        "Pickle files are faster than JSON for large datasets"
+      ]
+    },
+    "environment_variables": {
+      "FAST_BATCH_SIZE": "Override batch_size (number)",
+      "FAST_CONCURRENT_REQUESTS": "Override max_concurrent_requests (number)",
+      "FAST_CHECKPOINT_INTERVAL": "Override checkpoint_interval (number)",
+      "FAST_USE_STREAMING": "Override use_streaming (true/false)",
+      "FAST_EMBEDDING_TIMEOUT": "Override embedding_timeout (seconds)",
+      "FAST_PRESET": "Use a preset configuration (small_vault, medium_vault, etc.)"
+    }
+  },
+  "speed_benchmarks": {
+    "expected_performance": {
+      "conservative": "10-30 docs/sec",
+      "medium_vault": "50-100 docs/sec", 
+      "large_vault": "100-200 docs/sec",
+      "massive_vault": "200-400 docs/sec"
+    },
+    "factors_affecting_speed": [
+      "OpenAI API tier and rate limits",
+      "Document size (longer documents take more tokens)",
+      "Network latency to OpenAI servers",
+      "System memory and CPU",
+      "Concurrent request limits"
+    ]
+  },
+  "troubleshooting": {
+    "rate_limit_errors": {
+      "solutions": [
+        "Reduce batch_size to 25-50",
+        "Reduce max_concurrent_requests to 3-5",
+        "Add delay_between_batches: 2.0",
+        "Check your OpenAI usage dashboard",
+        "Consider upgrading OpenAI tier"
+      ]
+    },
+    "memory_errors": {
+      "solutions": [
+        "Set use_streaming: true",
+        "Reduce max_memory_mb",
+        "Reduce batch_size",
+        "Close other memory-intensive applications"
+      ]
+    },
+    "timeout_errors": {
+      "solutions": [
+        "Increase embedding_timeout to 120",
+        "Check network connectivity",
+        "Reduce batch_size if documents are very long",
+        "Use text-embedding-3-small for faster processing"
+      ]
+    }
+  }
+} 

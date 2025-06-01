@@ -1,0 +1,122 @@
+[
+  {
+    "function": "C:\\Users\\Rando\\Workspaces\\gnosis-rag\\backend\\rag_pipeline.py:564(index_documents)",
+    "cumulative_time": 0.47034390000000004,
+    "calls": 1,
+    "per_call": 0.47034390000000004
+  },
+  {
+    "function": "C:\\Users\\Rando\\AppData\\Local\\Programs\\Python\\Python310\\lib\\threading.py:589(wait)",
+    "cumulative_time": 0.4623551,
+    "calls": 3,
+    "per_call": 0.15411836666666667
+  },
+  {
+    "function": "C:\\Users\\Rando\\AppData\\Local\\Programs\\Python\\Python310\\lib\\threading.py:288(wait)",
+    "cumulative_time": 0.46234450000000005,
+    "calls": 4,
+    "per_call": 0.11558612500000001
+  },
+  {
+    "function": "~:0(<method 'acquire' of '_thread.lock' objects>)",
+    "cumulative_time": 0.4623377,
+    "calls": 17,
+    "per_call": 0.02719633529411765
+  },
+  {
+    "function": "C:\\Users\\Rando\\AppData\\Local\\Programs\\Python\\Python310\\lib\\concurrent\\futures\\_base.py:201(as_completed)",
+    "cumulative_time": 0.46104280000000003,
+    "calls": 2,
+    "per_call": 0.23052140000000002
+  },
+  {
+    "function": "C:\\Users\\Rando\\Workspaces\\gnosis-rag\\backend\\rag_pipeline.py:478(_save_index)",
+    "cumulative_time": 0.0026297,
+    "calls": 1,
+    "per_call": 0.0026297
+  },
+  {
+    "function": "C:\\Users\\Rando\\AppData\\Local\\Programs\\Python\\Python310\\lib\\logging\\__init__.py:1600(_log)",
+    "cumulative_time": 0.0018758000000000002,
+    "calls": 7,
+    "per_call": 0.0002679714285714286
+  },
+  {
+    "function": "C:\\Users\\Rando\\AppData\\Local\\Programs\\Python\\Python310\\lib\\logging\\__init__.py:1626(handle)",
+    "cumulative_time": 0.0014865000000000002,
+    "calls": 7,
+    "per_call": 0.00021235714285714288
+  },
+  {
+    "function": "C:\\Users\\Rando\\AppData\\Local\\Programs\\Python\\Python310\\lib\\logging\\__init__.py:1680(callHandlers)",
+    "cumulative_time": 0.0014717,
+    "calls": 7,
+    "per_call": 0.00021024285714285715
+  },
+  {
+    "function": "C:\\Users\\Rando\\AppData\\Local\\Programs\\Python\\Python310\\lib\\threading.py:916(start)",
+    "cumulative_time": 0.0014700000000000002,
+    "calls": 2,
+    "per_call": 0.0007350000000000001
+  },
+  {
+    "function": "C:\\Users\\Rando\\AppData\\Local\\Programs\\Python\\Python310\\lib\\logging\\__init__.py:955(handle)",
+    "cumulative_time": 0.0014391,
+    "calls": 14,
+    "per_call": 0.00010279285714285714
+  },
+  {
+    "function": "C:\\Users\\Rando\\AppData\\Local\\Programs\\Python\\Python310\\lib\\logging\\__init__.py:1088(emit)",
+    "cumulative_time": 0.0013664,
+    "calls": 14,
+    "per_call": 9.76e-05
+  },
+  {
+    "function": "C:\\Users\\Rando\\Workspaces\\gnosis-rag\\venv\\lib\\site-packages\\tqdm\\std.py:1464(display)",
+    "cumulative_time": 0.0012633000000000002,
+    "calls": 4,
+    "per_call": 0.00031582500000000005
+  },
+  {
+    "function": "C:\\Users\\Rando\\Workspaces\\gnosis-rag\\backend\\rag_pipeline.py:28(sanitize_for_json)",
+    "cumulative_time": 0.0011797,
+    "calls": 50,
+    "per_call": 2.3594e-05
+  },
+  {
+    "function": "C:\\Users\\Rando\\Workspaces\\gnosis-rag\\venv\\lib\\site-packages\\tqdm\\std.py:663(__new__)",
+    "cumulative_time": 0.0010275,
+    "calls": 1,
+    "per_call": 0.0010275
+  },
+  {
+    "function": "C:\\Users\\Rando\\Workspaces\\gnosis-rag\\venv\\lib\\site-packages\\tqdm\\std.py:1325(refresh)",
+    "cumulative_time": 0.0009991000000000002,
+    "calls": 3,
+    "per_call": 0.00033303333333333337
+  },
+  {
+    "function": "~:0(<method 'write' of '_io.TextIOWrapper' objects>)",
+    "cumulative_time": 0.0009982,
+    "calls": 20,
+    "per_call": 4.991e-05
+  },
+  {
+    "function": "C:\\Users\\Rando\\Workspaces\\gnosis-rag\\venv\\lib\\site-packages\\tqdm\\_monitor.py:30(__init__)",
+    "cumulative_time": 0.0009892,
+    "calls": 1,
+    "per_call": 0.0009892
+  },
+  {
+    "function": "~:0(<built-in method nt.stat>)",
+    "cumulative_time": 0.000867,
+    "calls": 8,
+    "per_call": 0.000108375
+  },
+  {
+    "function": "C:\\Users\\Rando\\AppData\\Local\\Programs\\Python\\Python310\\lib\\logging\\__init__.py:1467(info)",
+    "cumulative_time": 0.0008514000000000001,
+    "calls": 3,
+    "per_call": 0.0002838
+  }
+]

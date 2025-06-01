@@ -4,7 +4,7 @@ info:
   description: A plugin for indexing, saving conversations, and querying an Obsidian vault using RAG (Retrieval-Augmented Generation)
   version: 'v1'
 servers:
-  - url: http://localhost:8000
+  - url: YOUR_CLOUDFLARE_TUNNEL_URL
 paths:
   /index:
     post:

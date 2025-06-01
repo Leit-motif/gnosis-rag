@@ -1,0 +1,122 @@
+[
+  {
+    "function": "C:\\Users\\Rando\\AppData\\Local\\Programs\\Python\\Python310\\lib\\asyncio\\runners.py:8(run)",
+    "cumulative_time": 0.8672219000000001,
+    "calls": 1,
+    "per_call": 0.8672219000000001
+  },
+  {
+    "function": "C:\\Users\\Rando\\AppData\\Local\\Programs\\Python\\Python310\\lib\\asyncio\\base_events.py:610(run_until_complete)",
+    "cumulative_time": 0.8663709,
+    "calls": 3,
+    "per_call": 0.2887903
+  },
+  {
+    "function": "C:\\Users\\Rando\\AppData\\Local\\Programs\\Python\\Python310\\lib\\asyncio\\windows_events.py:317(run_forever)",
+    "cumulative_time": 0.8662738000000001,
+    "calls": 3,
+    "per_call": 0.2887579333333334
+  },
+  {
+    "function": "C:\\Users\\Rando\\AppData\\Local\\Programs\\Python\\Python310\\lib\\asyncio\\base_events.py:587(run_forever)",
+    "cumulative_time": 0.8661937000000001,
+    "calls": 3,
+    "per_call": 0.28873123333333334
+  },
+  {
+    "function": "C:\\Users\\Rando\\AppData\\Local\\Programs\\Python\\Python310\\lib\\asyncio\\base_events.py:1821(_run_once)",
+    "cumulative_time": 0.8660304000000001,
+    "calls": 52,
+    "per_call": 0.01665443076923077
+  },
+  {
+    "function": "C:\\Users\\Rando\\AppData\\Local\\Programs\\Python\\Python310\\lib\\asyncio\\windows_events.py:437(select)",
+    "cumulative_time": 0.8022223,
+    "calls": 52,
+    "per_call": 0.015427351923076925
+  },
+  {
+    "function": "C:\\Users\\Rando\\AppData\\Local\\Programs\\Python\\Python310\\lib\\asyncio\\windows_events.py:775(_poll)",
+    "cumulative_time": 0.8021545000000001,
+    "calls": 53,
+    "per_call": 0.015134990566037738
+  },
+  {
+    "function": "~:0(<built-in method _overlapped.GetQueuedCompletionStatus>)",
+    "cumulative_time": 0.8011094000000001,
+    "calls": 76,
+    "per_call": 0.010540913157894738
+  },
+  {
+    "function": "C:\\Users\\Rando\\AppData\\Local\\Programs\\Python\\Python310\\lib\\asyncio\\events.py:78(_run)",
+    "cumulative_time": 0.0628808,
+    "calls": 69,
+    "per_call": 0.0009113159420289855
+  },
+  {
+    "function": "~:0(<method 'run' of '_contextvars.Context' objects>)",
+    "cumulative_time": 0.0627689,
+    "calls": 69,
+    "per_call": 0.0009096942028985508
+  },
+  {
+    "function": "C:\\Users\\Rando\\Workspaces\\gnosis-rag\\backend\\fast_indexer.py:274(process_with_semaphore)",
+    "cumulative_time": 0.0487246,
+    "calls": 21,
+    "per_call": 0.0023202190476190477
+  },
+  {
+    "function": "C:\\Users\\Rando\\Workspaces\\gnosis-rag\\backend\\fast_indexer.py:302(_generate_embeddings_batch)",
+    "cumulative_time": 0.048107800000000006,
+    "calls": 21,
+    "per_call": 0.0022908476190476195
+  },
+  {
+    "function": "C:\\Users\\Rando\\Workspaces\\gnosis-rag\\venv\\lib\\site-packages\\openai\\resources\\embeddings.py:162(create)",
+    "cumulative_time": 0.0452014,
+    "calls": 21,
+    "per_call": 0.002152447619047619
+  },
+  {
+    "function": "C:\\Users\\Rando\\Workspaces\\gnosis-rag\\venv\\lib\\site-packages\\openai\\_base_client.py:1791(post)",
+    "cumulative_time": 0.0421853,
+    "calls": 21,
+    "per_call": 0.00200882380952381
+  },
+  {
+    "function": "C:\\Users\\Rando\\Workspaces\\gnosis-rag\\venv\\lib\\site-packages\\openai\\_base_client.py:1481(request)",
+    "cumulative_time": 0.0414524,
+    "calls": 21,
+    "per_call": 0.0019739238095238094
+  },
+  {
+    "function": "C:\\Users\\Rando\\Workspaces\\gnosis-rag\\venv\\lib\\site-packages\\openai\\_base_client.py:1503(_request)",
+    "cumulative_time": 0.041431,
+    "calls": 21,
+    "per_call": 0.001972904761904762
+  },
+  {
+    "function": "C:\\Users\\Rando\\Workspaces\\gnosis-rag\\venv\\lib\\site-packages\\httpx\\_client.py:1594(send)",
+    "cumulative_time": 0.0302075,
+    "calls": 20,
+    "per_call": 0.001510375
+  },
+  {
+    "function": "C:\\Users\\Rando\\Workspaces\\gnosis-rag\\venv\\lib\\site-packages\\httpx\\_models.py:974(aread)",
+    "cumulative_time": 0.0165606,
+    "calls": 12,
+    "per_call": 0.00138005
+  },
+  {
+    "function": "C:\\Users\\Rando\\Workspaces\\gnosis-rag\\venv\\lib\\site-packages\\httpx\\_models.py:979(<listcomp>)",
+    "cumulative_time": 0.0164235,
+    "calls": 11,
+    "per_call": 0.0014930454545454546
+  },
+  {
+    "function": "C:\\Users\\Rando\\Workspaces\\gnosis-rag\\venv\\lib\\site-packages\\httpx\\_models.py:982(aiter_bytes)",
+    "cumulative_time": 0.0163325,
+    "calls": 99,
+    "per_call": 0.00016497474747474749
+  }
+]

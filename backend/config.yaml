@@ -6,17 +6,17 @@ vault:
 
 # Embedding Configuration
 embeddings:
-  provider: ${EMBEDDING_PROVIDER}  # "openai" or "local"
-  model: ${EMBEDDING_MODEL}  # for OpenAI
-  local_model: ${LOCAL_MODEL}  # for local embeddings
+  provider: openai  # "openai" or "local"
+  model: text-embedding-3-small  # Fast and cost-effective
+  local_model: all-mpnet-base-v2  # for local embeddings
   batch_size: 32
   max_tokens: 8191
 
 # Vector Store Configuration
 vector_store:
   type: "faiss"  # or "chroma" or "qdrant"
-  dimension: 1536  # 1536 for OpenAI, 384 for all-MiniLM
-  index_path: ${VECTOR_STORE_PATH}
+  dimension: 1536  # 1536 for OpenAI text-embedding-3-small
+  index_path: data/vector_store
   similarity_metric: "cosine"
 
 # Text Processing
@@ -25,13 +25,48 @@ chunking:
   chunk_overlap: 50
   split_by: "paragraph"  # or "sentence"
 
+# OpenAI Chat Model Configuration
+chat_model:
+  name: gpt-4o-mini
+  temperature: 0.7
+  max_response_tokens: 128000
+  system_prompt: ${OPENAI_SYSTEM_PROMPT}
+
 # API Configuration
 api:
-  host: ${API_HOST}
-  port: ${API_PORT}
-  debug: ${DEBUG_MODE}
+  host: 127.0.0.1
+  port: 8000
+  debug: false
 
 # Logging
 logging:
   level: "INFO"
-  file: "logs/gnosis.log" 
+  file: "logs/gnosis.log"
+
+# Directory Settings
+directories:
+  docs_dir: docs
+  data_dir: "data"
+
+# Fast Indexing Configuration - Optimized for OpenAI + Massive Vault
+fast_indexing:
+  # Use aggressive preset for maximum speed with OpenAI API
+  preset: large_vault  # Balanced speed and reliability
+  
+  # Manual overrides for your massive vault (uncomment to use)
+  # batch_size: 100                    # Smaller batches to avoid rate limits
+  # max_concurrent_requests: 8         # Conservative concurrency
+  # checkpoint_interval: 250           # More frequent checkpoints
+  # embedding_timeout: 120             # Longer timeout for large batches
+  # use_streaming: true                # Memory-efficient processing
+  # max_memory_mb: 3000               # Memory limit in MB
+  
+  # Advanced settings
+  embedding_model: text-embedding-3-small  # Fast and affordable
+  retry_attempts: 3
+  delay_between_batches: 0.5  # Small delay to avoid rate limits
+  
+  # Memory management
+  cleanup_checkpoints: true  # Clean old checkpoints after successful completion
+  max_checkpoint_files: 5    # Keep only last 5 checkpoint files
+

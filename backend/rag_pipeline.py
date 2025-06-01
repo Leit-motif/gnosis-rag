@@ -14,10 +14,47 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import math
 import tempfile
 import shutil
-from .graph_retriever import GraphRetriever
-from .conversation_memory import ConversationMemory
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+from graph_retriever import GraphRetriever
+from conversation_memory import ConversationMemory
 import json
 import re
+import unicodedata
+from sentence_transformers import SentenceTransformer
+
+def sanitize_for_json(text: str) -> str:
+    """
+    Optimized sanitize text content for JSON serialization and OpenAI API.
+    Reduced operations based on profiling analysis.
+    """
+    if not isinstance(text, str):
+        return str(text)
+    
+    # Skip normalization for most common cases to save time
+    if text.isascii():
+        # Fast path for ASCII text - just remove null bytes
+        return text.replace('\x00', '').replace('\ufffd', '')
+    
+    # Only normalize non-ASCII text
+    text = unicodedata.normalize('NFKD', text)
+    
+    # Combined operation: remove problematic characters in single pass
+    # Use translate for better performance than repeated character checking
+    control_chars = {ord(c): None for c in ['\x00', '\ufffd']}
+    sanitized = text.translate(control_chars)
+    
+    # Only do expensive character validation if we suspect issues
+    if any(ord(c) < 32 and c not in '\n\t\r' for c in sanitized[:100]):  # Sample check
+        # Remove control characters except newlines, tabs, and carriage returns
+        sanitized = ''.join(
+            char for char in sanitized 
+            if unicodedata.category(char)[0] != 'C' or char in '\n\t\r'
+        )
+    
+    return sanitized
 
 # Add a custom JSON encoder to handle dates
 class CustomJSONEncoder(json.JSONEncoder):
@@ -29,23 +66,66 @@ class CustomJSONEncoder(json.JSONEncoder):
 class RAGPipeline:
     def __init__(self, config: Dict[str, Any]):
         self.config = config
-        # Initialize OpenAI client with API key from environment
-        api_key = os.environ.get("OPENAI_API_KEY")
-        if not api_key:
-            raise ValueError("OPENAI_API_KEY environment variable is not set")
-        # Simple initialization with only the API key
-        self.client = OpenAI(api_key=api_key)
         self.logger = logging.getLogger(__name__)
+        
+        # Determine embedding provider
+        embedding_config = config.get("embeddings", {})
+        embedding_provider = embedding_config.get("provider", "openai")
+        
+        # Check environment variables first, then config
+        env_provider = os.environ.get("EMBEDDING_PROVIDER")
+        if env_provider:
+            embedding_provider = env_provider
+            
+        if embedding_provider == "local":
+            # For local embeddings, use LOCAL_MODEL env var or config model
+            local_model = os.environ.get("LOCAL_MODEL") or embedding_config.get("model", "all-MiniLM-L6-v2")
+            
+            # Force faster model for speed optimization
+            if "mpnet" in local_model:
+                self.logger.warning(f"Switching from {local_model} to all-MiniLM-L6-v2 for better speed")
+                local_model = "all-MiniLM-L6-v2"
+                
+            self.logger.info(f"Initializing local embedding model: {local_model}")
+            self.sentence_transformer = SentenceTransformer(local_model)
+            self.embed = self._embed_local
+            
+            # Set dimension based on model
+            if "all-MiniLM-L6-v2" in local_model:
+                self.dimension = 384
+            elif "all-mpnet-base-v2" in local_model:
+                self.dimension = 768
+            else:
+                self.dimension = 384  # Default for most sentence-transformers models
+            self.batch_size = 150  # Optimized batch size for local processing (based on profiling)
+        else:
+            # Initialize OpenAI embeddings
+            embedding_model = os.environ.get("EMBEDDING_MODEL") or embedding_config.get("model", "text-embedding-ada-002")
+            self.logger.info(f"Initializing OpenAI embedding model: {embedding_model}")
+            api_key = os.environ.get("OPENAI_API_KEY")
+            if not api_key:
+                raise ValueError("OPENAI_API_KEY environment variable is not set")
+            self.client = OpenAI(api_key=api_key)
+            self.embed = self._embed_openai
+            self.dimension = 1536  # OpenAI dimension
+            self.batch_size = 500  # Smaller batch for API
+            
+        # Initialize OpenAI client for chat completions (always needed regardless of embedding provider)
+        chat_api_key = os.environ.get("OPENAI_API_KEY")
+        if not chat_api_key:
+            raise ValueError("OPENAI_API_KEY environment variable is required for chat completions")
+        
+        # If we haven't already initialized the client for embeddings, initialize it now for chat
+        if not hasattr(self, 'client'):
+            self.client = OpenAI(api_key=chat_api_key)
+            
         self.document_store = {}  # Initialize empty document store
         self.doc_embeddings = {}  # Initialize empty embeddings store
-        
-        # Initialize embeddings - OpenAI only
-        self.embed = self._embed_openai
-        self.batch_size = 500  # Increased batch size for OpenAI API
+        self._date_cache = {}  # Cache for date extraction to avoid repeated processing
         
         # Initialize vector store configuration
         vector_store_config = config.get("vector_store", {})
-        self.dimension = vector_store_config.get("dimension", 1536)  # OpenAI's default dimension
+        self.dimension = vector_store_config.get("dimension", self.dimension)  # Use config or default
         
         # Initialize vector store paths with proper Windows path handling
         self.index_path = Path(vector_store_config.get("index_path", "data/vector_store/faiss.index")).resolve()
@@ -239,6 +319,25 @@ class RAGPipeline:
             self.logger.info("Creating in-memory index as fallback with dimension 1536")
             return faiss.IndexFlatIP(1536)  # Default OpenAI embedding dimension
     
+    def _embed_local(self, texts: List[str]) -> np.ndarray:
+        """Get embeddings using local sentence-transformers model - optimized for speed"""
+        try:
+            self.logger.info(f"Generating embeddings for {len(texts)} texts using local model (batch processing)")
+            
+            # Process all texts at once for maximum speed
+            embeddings = self.sentence_transformer.encode(
+                texts, 
+                convert_to_numpy=True,
+                batch_size=32,  # Optimal batch size for speed
+                show_progress_bar=False,  # Disable progress bar for speed
+                normalize_embeddings=True  # Pre-normalize for better similarity search
+            )
+            
+            return embeddings
+        except Exception as e:
+            self.logger.error(f"Local embedding error: {str(e)}")
+            raise
+
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
     def _embed_openai(self, texts: List[str]) -> np.ndarray:
         """Get embeddings using OpenAI API"""
@@ -281,7 +380,12 @@ class RAGPipeline:
         """
         Extract date information from a file path with format YYYY-MM-DD
         Returns a dictionary with extracted date components or empty dict if no match
+        Uses caching to avoid repeated processing of the same paths.
         """
+        # Check cache first to avoid repeated processing
+        if path in self._date_cache:
+            return self._date_cache[path]
+            
         date_info = {}
         
         # Try to extract from the last part of the path (filename)
@@ -331,10 +435,13 @@ class RAGPipeline:
                 date_info['day'] = day
                 date_info['created'] = date_str
                 
-                self.logger.info(f"Extracted date {date_str} from path {path}")
+                # Reduced logging frequency to avoid spam (only log at debug level)
+                self.logger.debug(f"Extracted date {date_str} from path {path}")
             except ValueError:
                 self.logger.warning(f"Found date-like pattern in {path} but date is invalid")
-                
+        
+        # Cache the result (whether successful or not) to avoid repeated processing
+        self._date_cache[path] = date_info
         return date_info
 
     def _process_batch(self, batch: List[Dict[str, Any]], batch_idx: int) -> Tuple[np.ndarray, List[Dict[str, Any]]]:
@@ -358,7 +465,7 @@ class RAGPipeline:
                         doc['metadata'].update(date_info)
                 
                 self.document_store[doc_id] = {
-                    'content': doc['content'],
+                    'content': sanitize_for_json(doc['content']),
                     'metadata': doc['metadata']
                 }
                 processed_docs.append(doc)
@@ -473,10 +580,10 @@ class RAGPipeline:
                 for i in range(0, len(documents), self.batch_size)
             ]
             
-            # Process batches in parallel
+            # Process batches in parallel with optimized worker count (based on profiling)
             all_embeddings = []
             processed_docs = []
-            with ThreadPoolExecutor(max_workers=4) as executor:
+            with ThreadPoolExecutor(max_workers=15) as executor:
                 futures = []
                 for i, batch in enumerate(batches):
                     future = executor.submit(self._process_batch, batch, i)
@@ -516,7 +623,7 @@ class RAGPipeline:
             self.doc_embeddings.clear()
             for i, doc in enumerate(processed_docs):
                 self.document_store[str(i)] = {
-                    'content': doc['content'],
+                    'content': sanitize_for_json(doc['content']),
                     'metadata': doc['metadata']
                 }
                 self.doc_embeddings[str(i)] = combined_embeddings[i].tolist()
@@ -906,9 +1013,12 @@ class RAGPipeline:
                 # Format metadata
                 metadata_str = ", ".join(metadata_parts)
                 
+                # Sanitize content before adding to context
+                sanitized_content = sanitize_for_json(result['content'])
+                
                 # Create the full context entry
                 context_parts.append(
-                    f"Source {i+1} (Path: {doc_path}):\n{result['content']}\nMetadata: {metadata_str}\nConnections: {connections_str}"
+                    f"Source {i+1} (Path: {doc_path}):\n{sanitized_content}\nMetadata: {metadata_str}\nConnections: {connections_str}"
                 )
             context = "\n\n".join(context_parts)
             self.logger.info(f"Session [{session_id}] Context generated for LLM (length: {len(context)}):\n"
@@ -944,7 +1054,7 @@ Be specific about what information comes from which source files."""},
                 import tiktoken
                 
                 # Get the encoding for the model we're using
-                model = self.config.get("chat_model", "gpt-4-turbo-preview")
+                model = self.config.get("chat_model", {}).get("name", "gpt-4-turbo-preview")
                 try:
                     encoding = tiktoken.encoding_for_model(model)
                 except KeyError:
@@ -1019,16 +1129,35 @@ Be specific about what information comes from which source files."""},
             except Exception as e:
                 self.logger.warning(f"Error during token counting and truncation: {str(e)}")
             
+            # Sanitize all message content to ensure valid JSON
+            for message in messages:
+                message["content"] = sanitize_for_json(message["content"])
+            
             # Add the user message with possibly truncated context
-            messages.append({"role": "user", "content": user_content})
+            messages.append({"role": "user", "content": sanitize_for_json(user_content)})
+            
+            # Log the final message structure for debugging
+            self.logger.info(f"Session [{session_id}] Sending {len(messages)} messages to OpenAI")
+            for i, msg in enumerate(messages):
+                content_preview = msg["content"][:100] + "..." if len(msg["content"]) > 100 else msg["content"]
+                self.logger.info(f"  Message {i+1} ({msg['role']}): {content_preview}")
             
             # Generate response
-            response = self.client.chat.completions.create(
-                model=self.config.get("chat_model", "gpt-4-turbo-preview"),
-                messages=messages,
-                temperature=0.7,
-                max_tokens=1000
-            )
+            try:
+                response = self.client.chat.completions.create(
+                    model=self.config.get("chat_model", {}).get("name", "gpt-4-turbo-preview"),
+                    messages=messages,
+                    temperature=0.7,
+                    max_tokens=1000
+                )
+            except Exception as api_error:
+                self.logger.error(f"OpenAI API error: {str(api_error)}")
+                # Log the exact request that failed for debugging
+                self.logger.error(f"Failed request model: {self.config.get('chat_model', {}).get('name', 'gpt-4-turbo-preview')}")
+                self.logger.error(f"Failed request messages count: {len(messages)}")
+                for i, msg in enumerate(messages):
+                    self.logger.error(f"Message {i+1} role: {msg['role']}, length: {len(msg['content'])}")
+                raise
             
             # Store the interaction in conversation memory
             try:

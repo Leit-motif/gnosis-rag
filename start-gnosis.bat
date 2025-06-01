@@ -1,6 +1,9 @@
 @echo off
 echo Starting Gnosis RAG system...
 echo.
+echo NOTE: For automatic tunnel URL capture and clipboard copy,
+echo       use start-gnosis.ps1 instead of this batch file.
+echo.
 
 REM Path to the project
 set PROJECT_PATH=%~dp0
@@ -40,9 +43,18 @@ if %ERRORLEVEL% neq 0 (
 )
 
 echo.
-echo Gnosis RAG system is now starting!
+echo ===================================
+echo Gnosis RAG system is now running!
+echo ===================================
 echo FastAPI server: http://localhost:8000
-echo Cloudflare Tunnel: https://closer-ma-besides-ted.trycloudflare.com
+echo Cloudflare Tunnel: Check the tunnel window for URL
+echo.
+echo MANUAL STEPS:
+echo 1. Check the "Cloudflare Tunnel" window for the tunnel URL
+echo 2. Copy the URL (it looks like: https://xxxx-xx-xxxx-xxx.trycloudflare.com)
+echo 3. Update config.json manually if needed
+echo.
+echo TIP: Use start-gnosis.ps1 for automatic URL detection and clipboard copy!
 echo.
 echo The system is running in separate windows. To stop everything, close those windows.
 echo.

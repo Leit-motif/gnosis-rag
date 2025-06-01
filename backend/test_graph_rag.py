@@ -8,8 +8,12 @@ import numpy as np
 from unittest.mock import MagicMock, patch
 import json
 
-from .enhanced_graph_retriever import EnhancedGraphRetriever
-from .graph_rag_integration import GraphRAGIntegration
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+from enhanced_graph_retriever import EnhancedGraphRetriever
+from graph_rag_integration import GraphRAGIntegration
 
 class TestEnhancedGraphRetriever(unittest.TestCase):
     """Test suite for the EnhancedGraphRetriever"""

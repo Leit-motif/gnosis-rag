@@ -1,0 +1,37 @@
+{
+    "vault": {
+        "path": "./data",
+        "exclude_folders": [".git", ".obsidian", "node_modules"],
+        "file_extensions": [".md"]
+    },
+    "vector_store": {
+        "type": "chroma",
+        "collection_name": "obsidian_vault",
+        "embedding_model": "text-embedding-3-small"
+    },
+    "rag_pipeline": {
+        "chunk_size": 1000,
+        "chunk_overlap": 200,
+        "max_documents": 5
+    },
+    "rate_limiting": {
+        "enabled": true,
+        "max_requests_per_minute": 50,
+        "batch_size": 25,
+        "delay_between_batches": 2.0,
+        "max_retries": 3,
+        "backoff_factor": 2.0
+    },
+    "api_settings": {
+        "max_tokens_per_request": 4000,
+        "context_window": 8192,
+        "embedding_timeout": 30,
+        "max_concurrent_requests": 5
+    },
+    "recovery": {
+        "auto_backup": true,
+        "backup_frequency": "daily",
+        "max_backups": 7,
+        "recovery_on_failure": true
+    }
+} 

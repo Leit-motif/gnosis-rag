@@ -9,9 +9,9 @@
   },
   "api": {
     "type": "openapi",
-    "url": "https://rice-depth-shopper-fewer.trycloudflare.com/openapi.yaml"
+    "url": "YOUR_CLOUDFLARE_TUNNEL_URL/openapi.yaml"
   },
-  "logo_url": "https://rice-depth-shopper-fewer.trycloudflare.com/logo.png",
+  "logo_url": "YOUR_CLOUDFLARE_TUNNEL_URL/logo.png",
   "contact_email": "contact@example.com",
-  "legal_info_url": "https://rice-depth-shopper-fewer.trycloudflare.com/legal"
+  "legal_info_url": "YOUR_CLOUDFLARE_TUNNEL_URL/legal"
 } 

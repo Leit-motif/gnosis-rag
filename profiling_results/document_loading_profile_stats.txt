@@ -1,0 +1,277 @@
+         5262144 function calls (5254790 primitive calls) in 3.039 seconds
+
+   Ordered by: cumulative time
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.002    0.002    3.039    3.039 C:\Users\Rando\Workspaces\gnosis-rag\backend\obsidian_loader_v2.py:180(load_vault)
+      196    0.058    0.000    2.903    0.015 C:\Users\Rando\Workspaces\gnosis-rag\backend\obsidian_loader_v2.py:133(process_file)
+      196    0.001    0.000    1.298    0.007 C:\Users\Rando\Workspaces\gnosis-rag\venv\lib\site-packages\langchain_text_splitters\character.py:117(split_text)
+ 3461/196    0.144    0.000    1.298    0.007 C:\Users\Rando\Workspaces\gnosis-rag\venv\lib\site-packages\langchain_text_splitters\character.py:77(_split_text)
+     5334    0.655    0.000    0.869    0.000 C:\Users\Rando\Workspaces\gnosis-rag\venv\lib\site-packages\langchain_text_splitters\base.py:107(_merge_splits)
+    35256    0.040    0.000    0.752    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\pathlib.py:569(_parse_args)
+    35257    0.375    0.000    0.707    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\pathlib.py:56(parse_parts)
+    17726    0.063    0.000    0.541    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\pathlib.py:791(relative_to)
+    17530    0.016    0.000    0.453    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\pathlib.py:957(__new__)
+    17530    0.018    0.000    0.438    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\pathlib.py:589(_from_parts)
+      196    0.015    0.000    0.267    0.001 C:\Users\Rando\Workspaces\gnosis-rag\backend\obsidian_loader_v2.py:57(extract_metadata)
+   317109    0.218    0.000    0.224    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\pathlib.py:147(splitroot)
+      588    0.001    0.000    0.215    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\re.py:232(findall)
+      588    0.213    0.000    0.213    0.000 {method 'findall' of 're.Pattern' objects}
+      196    0.001    0.000    0.213    0.001 C:\Users\Rando\Workspaces\gnosis-rag\venv\lib\site-packages\frontmatter\__init__.py:140(load)
+2150348/2146352    0.182    0.000    0.184    0.000 {built-in method builtins.len}
+     3461    0.013    0.000    0.169    0.000 C:\Users\Rando\Workspaces\gnosis-rag\venv\lib\site-packages\langchain_text_splitters\character.py:31(_split_text_with_regex)
+      196    0.001    0.000    0.156    0.001 C:\Users\Rando\Workspaces\gnosis-rag\venv\lib\site-packages\frontmatter\__init__.py:168(loads)
+      196    0.001    0.000    0.144    0.001 C:\Users\Rando\Workspaces\gnosis-rag\venv\lib\site-packages\frontmatter\__init__.py:48(parse)
+      196    0.001    0.000    0.129    0.001 C:\Users\Rando\Workspaces\gnosis-rag\venv\lib\site-packages\frontmatter\default_handlers.py:255(load)
+      196    0.001    0.000    0.128    0.001 C:\Users\Rando\Workspaces\gnosis-rag\venv\lib\site-packages\yaml\__init__.py:74(load)
+      196    0.006    0.000    0.125    0.001 C:\Users\Rando\Workspaces\gnosis-rag\venv\lib\site-packages\yaml\constructor.py:47(get_single_data)
+    35661    0.018    0.000    0.124    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\pathlib.py:189(casefold_parts)
+        1    0.006    0.006    0.112    0.112 C:\Users\Rando\Workspaces\gnosis-rag\backend\obsidian_loader_v2.py:208(<listcomp>)
+    17530    0.023    0.000    0.106    0.000 C:\Users\Rando\Workspaces\gnosis-rag\backend\obsidian_loader_v2.py:26(to_langchain_document)
+    35661    0.068    0.000    0.106    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\pathlib.py:190(<listcomp>)
+  1075180    0.105    0.000    0.105    0.000 {method 'append' of 'list' objects}
+     1124    0.103    0.000    0.103    0.000 C:\Users\Rando\Workspaces\gnosis-rag\venv\lib\site-packages\yaml\nodes.py:27(__init__)
+     3427    0.002    0.000    0.095    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\re.py:222(split)
+     3623    0.093    0.000    0.093    0.000 {method 'split' of 're.Pattern' objects}
+    17530    0.014    0.000    0.084    0.000 C:\Users\Rando\Workspaces\gnosis-rag\venv\lib\site-packages\langchain_core\documents\base.py:285(__init__)
+    17530    0.014    0.000    0.070    0.000 C:\Users\Rando\Workspaces\gnosis-rag\venv\lib\site-packages\langchain_core\load\serializable.py:128(__init__)
+    17530    0.017    0.000    0.069    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\pathlib.py:634(as_posix)
+   335037    0.060    0.000    0.060    0.000 {method 'replace' of 'str' objects}
+    17530    0.008    0.000    0.055    0.000 C:\Users\Rando\Workspaces\gnosis-rag\venv\lib\site-packages\pydantic\main.py:243(__init__)
+    18140    0.034    0.000    0.049    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\pathlib.py:621(__str__)
+    17530    0.047    0.000    0.047    0.000 {method 'validate_python' of 'pydantic_core._pydantic_core.SchemaValidator' objects}
+     4733    0.003    0.000    0.044    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\re.py:197(search)
+     3427    0.043    0.000    0.043    0.000 C:\Users\Rando\Workspaces\gnosis-rag\venv\lib\site-packages\langchain_text_splitters\character.py:42(<listcomp>)
+   347606    0.041    0.000    0.041    0.000 {method 'lower' of 'str' objects}
+     4733    0.035    0.000    0.035    0.000 {method 'search' of 're.Pattern' objects}
+      196    0.001    0.000    0.032    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\codecs.py:871(open)
+    18611    0.014    0.000    0.032    0.000 C:\Users\Rando\Workspaces\gnosis-rag\venv\lib\site-packages\langchain_text_splitters\base.py:98(_join_docs)
+      196    0.030    0.000    0.030    0.000 {built-in method io.open}
+   281853    0.028    0.000    0.028    0.000 {built-in method sys.intern}
+      392    0.000    0.000    0.020    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\re.py:202(sub)
+      196    0.000    0.000    0.019    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\codecs.py:699(read)
+      196    0.001    0.000    0.019    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\codecs.py:451(read)
+      392    0.018    0.000    0.018    0.000 {method 'sub' of 're.Pattern' objects}
+    19816    0.012    0.000    0.017    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\pathlib.py:600(_from_parsed_parts)
+     3461    0.017    0.000    0.017    0.000 C:\Users\Rando\Workspaces\gnosis-rag\venv\lib\site-packages\langchain_text_splitters\character.py:55(<listcomp>)
+      392    0.000    0.000    0.016    0.000 C:\Users\Rando\Workspaces\gnosis-rag\venv\lib\site-packages\frontmatter\util.py:8(u)
+    36544    0.016    0.000    0.016    0.000 {method 'join' of 'str' objects}
+    17932    0.011    0.000    0.015    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\pathlib.py:608(_format_parsed_parts)
+    41434    0.014    0.000    0.014    0.000 {method 'strip' of 'str' objects}
+      392    0.013    0.000    0.013    0.000 {method 'read' of '_io.BufferedReader' objects}
+      418    0.001    0.000    0.013    0.000 {built-in method builtins.any}
+      196    0.000    0.000    0.012    0.000 C:\Users\Rando\Workspaces\gnosis-rag\venv\lib\site-packages\yaml\constructor.py:54(construct_document)
+     9141    0.007    0.000    0.012    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\re.py:288(_compile)
+     2081    0.002    0.000    0.011    0.000 C:\Users\Rando\Workspaces\gnosis-rag\backend\obsidian_loader_v2.py:193(<genexpr>)
+    59953    0.010    0.000    0.011    0.000 {built-in method builtins.isinstance}
+      392    0.000    0.000    0.010    0.000 C:\Users\Rando\Workspaces\gnosis-rag\venv\lib\site-packages\yaml\constructor.py:410(construct_yaml_map)
+      196    0.001    0.000    0.010    0.000 C:\Users\Rando\Workspaces\gnosis-rag\venv\lib\site-packages\yaml\constructor.py:215(construct_mapping)
+     8032    0.005    0.000    0.010    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\re.py:269(escape)
+    37346    0.009    0.000    0.009    0.000 {built-in method __new__ of type object at 0x00007FFD4E443920}
+      210    0.000    0.000    0.009    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\pathlib.py:1037(rglob)
+     2081    0.001    0.000    0.009    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\_collections_abc.py:1034(__iter__)
+      196    0.001    0.000    0.009    0.000 C:\Users\Rando\Workspaces\gnosis-rag\venv\lib\site-packages\yaml\constructor.py:132(construct_mapping)
+      210    0.000    0.000    0.008    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\pathlib.py:487(_select_from)
+    17530    0.008    0.000    0.008    0.000 C:\Users\Rando\Workspaces\gnosis-rag\backend\obsidian_loader_v2.py:14(__init__)
+     1320    0.003    0.000    0.008    0.000 C:\Users\Rando\Workspaces\gnosis-rag\venv\lib\site-packages\yaml\constructor.py:67(construct_object)
+     2081    0.003    0.000    0.007    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\pathlib.py:525(__getitem__)
+    35256    0.006    0.000    0.006    0.000 {method 'lstrip' of 'str' objects}
+    35257    0.005    0.000    0.005    0.000 {method 'reverse' of 'list' objects}
+      196    0.004    0.000    0.004    0.000 {built-in method _codecs.utf_8_decode}
+     8032    0.004    0.000    0.004    0.000 {method 'translate' of 'str' objects}
+      219    0.001    0.000    0.003    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\pathlib.py:438(_select_from)
+     1320    0.002    0.000    0.003    0.000 C:\Users\Rando\Workspaces\gnosis-rag\venv\lib\site-packages\yaml\resolver.py:143(resolve)
+      196    0.000    0.000    0.003    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\codecs.py:750(__exit__)
+      196    0.003    0.000    0.003    0.000 {method 'close' of '_io.BufferedReader' objects}
+      196    0.000    0.000    0.003    0.000 C:\Users\Rando\Workspaces\gnosis-rag\venv\lib\site-packages\frontmatter\default_handlers.py:209(split)
+      196    0.002    0.000    0.003    0.000 C:\Users\Rando\Workspaces\gnosis-rag\venv\lib\site-packages\yaml\cyaml.py:25(__init__)
+       20    0.002    0.000    0.002    0.000 {built-in method nt.scandir}
+      200    0.001    0.000    0.002    0.000 C:\Users\Rando\Workspaces\gnosis-rag\venv\lib\site-packages\yaml\constructor.py:322(construct_yaml_timestamp)
+      418    0.001    0.000    0.002    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\pathlib.py:668(__hash__)
+       19    0.000    0.000    0.002    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\sre_compile.py:783(compile)
+     8835    0.002    0.000    0.002    0.000 {method 'extend' of 'list' objects}
+      924    0.000    0.000    0.002    0.000 C:\Users\Rando\Workspaces\gnosis-rag\venv\lib\site-packages\yaml\constructor.py:402(construct_yaml_str)
+    29/11    0.001    0.000    0.002    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\pathlib.py:468(_iterate_directories)
+     1124    0.001    0.000    0.002    0.000 C:\Users\Rando\Workspaces\gnosis-rag\venv\lib\site-packages\yaml\constructor.py:173(construct_scalar)
+     2473    0.001    0.000    0.002    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\pathlib.py:710(name)
+     3953    0.001    0.000    0.002    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\pathlib.py:519(__len__)
+      996    0.002    0.000    0.002    0.000 {method 'match' of 're.Pattern' objects}
+      209    0.000    0.000    0.001    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\pathlib.py:654(_cparts)
+       19    0.000    0.000    0.001    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\sre_parse.py:944(parse)
+      196    0.001    0.000    0.001    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\pathlib.py:745(stem)
+      196    0.000    0.000    0.001    0.000 C:\Users\Rando\Workspaces\gnosis-rag\venv\lib\site-packages\frontmatter\__init__.py:30(detect_format)
+    30/19    0.000    0.000    0.001    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\sre_parse.py:436(_parse_sub)
+    30/19    0.000    0.000    0.001    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\sre_parse.py:494(_parse)
+        3    0.000    0.000    0.001    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\logging\__init__.py:1467(info)
+      196    0.000    0.000    0.001    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\codecs.py:681(__init__)
+        3    0.000    0.000    0.001    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\logging\__init__.py:1600(_log)
+      196    0.000    0.000    0.001    0.000 C:\Users\Rando\Workspaces\gnosis-rag\venv\lib\site-packages\frontmatter\default_handlers.py:196(detect)
+       19    0.000    0.000    0.001    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\sre_compile.py:622(_code)
+        3    0.000    0.000    0.001    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\logging\__init__.py:1626(handle)
+        3    0.000    0.000    0.001    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\logging\__init__.py:1680(callHandlers)
+      196    0.001    0.000    0.001    0.000 C:\Users\Rando\Workspaces\gnosis-rag\venv\lib\site-packages\yaml\constructor.py:180(flatten_mapping)
+        6    0.000    0.000    0.001    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\logging\__init__.py:955(handle)
+      562    0.000    0.000    0.001    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\abc.py:117(__instancecheck__)
+        6    0.000    0.000    0.001    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\logging\__init__.py:1088(emit)
+      418    0.000    0.000    0.001    0.000 C:\Users\Rando\Workspaces\gnosis-rag\backend\obsidian_loader_v2.py:197(<genexpr>)
+     1124    0.000    0.000    0.001    0.000 C:\Users\Rando\Workspaces\gnosis-rag\venv\lib\site-packages\yaml\constructor.py:117(construct_scalar)
+      200    0.001    0.000    0.001    0.000 {method 'groupdict' of 're.Match' objects}
+     2941    0.000    0.000    0.000    0.000 {method 'get' of 'dict' objects}
+      218    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\pathlib.py:966(_make_child_relpath)
+      209    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\pathlib.py:875(parents)
+      196    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\logging\__init__.py:1455(debug)
+      209    0.000    0.000    0.000    0.000 {method 'fullmatch' of 're.Pattern' objects}
+      196    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\codecs.py:423(__init__)
+    42/19    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\sre_compile.py:87(_compile)
+     1320    0.000    0.000    0.000    0.000 C:\Users\Rando\Workspaces\gnosis-rag\venv\lib\site-packages\yaml\resolver.py:91(descend_resolver)
+      196    0.000    0.000    0.000    0.000 {built-in method _codecs.lookup}
+       19    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\sre_compile.py:560(_compile_info)
+      562    0.000    0.000    0.000    0.000 {built-in method _abc._abc_instancecheck}
+      196    0.000    0.000    0.000    0.000 {method 'update' of 'set' objects}
+      209    0.000    0.000    0.000    0.000 {method 'add' of 'set' objects}
+      217    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\pathlib.py:631(__fspath__)
+        6    0.000    0.000    0.000    0.000 {method 'write' of '_io.TextIOWrapper' objects}
+      196    0.000    0.000    0.000    0.000 C:\Users\Rando\Workspaces\gnosis-rag\backend\obsidian_loader_v2.py:130(<dictcomp>)
+      196    0.000    0.000    0.000    0.000 C:\Users\Rando\Workspaces\gnosis-rag\venv\lib\site-packages\yaml\nodes.py:36(__init__)
+     1320    0.000    0.000    0.000    0.000 C:\Users\Rando\Workspaces\gnosis-rag\venv\lib\site-packages\yaml\resolver.py:114(ascend_resolver)
+        1    0.000    0.000    0.000    0.000 {method 'clear' of 'set' objects}
+      196    0.000    0.000    0.000    0.000 C:\Users\Rando\Workspaces\gnosis-rag\venv\lib\site-packages\yaml\resolver.py:21(__init__)
+      209    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\pathlib.py:512(__init__)
+      199    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\logging\__init__.py:1724(isEnabledFor)
+      196    0.000    0.000    0.000    0.000 C:\Users\Rando\Workspaces\gnosis-rag\venv\lib\site-packages\frontmatter\__init__.py:294(__init__)
+      196    0.000    0.000    0.000    0.000 C:\Users\Rando\Workspaces\gnosis-rag\venv\lib\site-packages\yaml\constructor.py:24(__init__)
+      392    0.000    0.000    0.000    0.000 {method 'update' of 'dict' objects}
+      205    0.000    0.000    0.000    0.000 {method 'rfind' of 'str' objects}
+        3    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\logging\__init__.py:1204(emit)
+        6    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\logging\__init__.py:932(format)
+      216    0.000    0.000    0.000    0.000 {built-in method builtins.next}
+      209    0.000    0.000    0.000    0.000 {method 'endswith' of 'str' objects}
+        6    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\logging\__init__.py:665(format)
+      2/1    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\pathlib.py:368(_make_selector)
+        1    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\pathlib.py:465(__init__)
+      2/1    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\pathlib.py:389(__init__)
+        1    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\pathlib.py:434(__init__)
+      209    0.000    0.000    0.000    0.000 {built-in method builtins.hash}
+        3    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\logging\__init__.py:1585(makeRecord)
+        1    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\pathlib.py:398(select_from)
+        1    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\pathlib.py:192(compile_pattern)
+        1    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\pathlib.py:1300(is_dir)
+        3    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\logging\__init__.py:283(__init__)
+        1    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\pathlib.py:1092(stat)
+        1    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\re.py:249(compile)
+        1    0.000    0.000    0.000    0.000 {built-in method nt.stat}
+      132    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\sre_parse.py:255(get)
+    50/28    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\sre_parse.py:175(getwidth)
+        6    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\logging\__init__.py:597(formatTime)
+      196    0.000    0.000    0.000    0.000 {method 'setdefault' of 'dict' objects}
+      177    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\sre_parse.py:234(__next)
+      207    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\sre_parse.py:165(__getitem__)
+      392    0.000    0.000    0.000    0.000 {method 'values' of 'dict' objects}
+        6    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\logging\__init__.py:1077(flush)
+       48    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\sre_parse.py:356(_escape)
+      418    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\pathlib.py:412(_select_from)
+      196    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\codecs.py:348(__init__)
+      196    0.000    0.000    0.000    0.000 {method 'group' of 're.Match' objects}
+       19    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\enum.py:986(__and__)
+      208    0.000    0.000    0.000    0.000 {built-in method builtins.hasattr}
+      196    0.000    0.000    0.000    0.000 C:\Users\Rando\Workspaces\gnosis-rag\backend\obsidian_loader_v2.py:127(<listcomp>)
+      208    0.000    0.000    0.000    0.000 C:\Users\Rando\Workspaces\gnosis-rag\backend\obsidian_loader_v2.py:80(<genexpr>)
+        6    0.000    0.000    0.000    0.000 {method 'flush' of '_io.TextIOWrapper' objects}
+      196    0.000    0.000    0.000    0.000 {method 'copy' of 'dict' objects}
+    24/18    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\sre_compile.py:485(_get_literal_prefix)
+        3    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\logging\__init__.py:1549(findCaller)
+        7    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\sre_compile.py:292(_optimize_charset)
+      196    0.000    0.000    0.000    0.000 C:\Users\Rando\Workspaces\gnosis-rag\backend\obsidian_loader_v2.py:128(<listcomp>)
+        3    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\ntpath.py:240(basename)
+       19    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\sre_parse.py:225(__init__)
+      215    0.000    0.000    0.000    0.000 {method 'items' of 'dict' objects}
+       38    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\enum.py:359(__call__)
+        3    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\ntpath.py:206(split)
+        6    0.000    0.000    0.000    0.000 {built-in method time.localtime}
+       91    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\sre_parse.py:173(append)
+       88    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\sre_parse.py:250(match)
+        6    0.000    0.000    0.000    0.000 {built-in method time.strftime}
+      196    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\codecs.py:747(__enter__)
+        8    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\sre_parse.py:97(closegroup)
+       16    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\sre_compile.py:456(_generate_overlap_table)
+       60    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\sre_parse.py:287(tell)
+        3    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\ntpath.py:51(normcase)
+       69    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\sre_parse.py:161(__len__)
+      102    0.000    0.000    0.000    0.000 {built-in method builtins.min}
+      209    0.000    0.000    0.000    0.000 {method 'is_dir' of 'nt.DirEntry' objects}
+       13    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\sre_compile.py:447(_simple)
+        6    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\logging\__init__.py:649(formatMessage)
+        3    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\ntpath.py:229(splitext)
+       55    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\sre_parse.py:82(groups)
+       38    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\enum.py:678(__new__)
+       43    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\sre_parse.py:112(__init__)
+       19    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\sre_parse.py:928(fix_flags)
+        6    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\logging\__init__.py:438(format)
+       38    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\sre_compile.py:619(isstring)
+        8    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\sre_parse.py:85(opengroup)
+       12    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\logging\__init__.py:912(acquire)
+        6    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\logging\__init__.py:643(usesTime)
+        3    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\genericpath.py:121(_splitext)
+        3    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\ntpath.py:150(splitdrive)
+        6    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\logging\__init__.py:431(_format)
+       19    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\sre_parse.py:76(__init__)
+        6    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\sre_parse.py:433(_uniq)
+        7    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\sre_compile.py:265(_compile_charset)
+       19    0.000    0.000    0.000    0.000 {built-in method _sre.compile}
+        3    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\encodings\cp1252.py:18(encode)
+        3    0.000    0.000    0.000    0.000 {built-in method _winapi.LCMapStringEx}
+        4    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\sre_parse.py:296(_class_escape)
+        6    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\logging\__init__.py:423(usesTime)
+       79    0.000    0.000    0.000    0.000 {built-in method builtins.ord}
+        1    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\sre_compile.py:435(_mk_bitmap)
+       20    0.000    0.000    0.000    0.000 {method '__exit__' of 'nt.ScandirIterator' objects}
+       12    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\logging\__init__.py:919(release)
+        3    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\logging\__init__.py:160(<lambda>)
+       15    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\sre_compile.py:81(_combine_flags)
+       26    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\sre_compile.py:477(_get_iscased)
+       14    0.000    0.000    0.000    0.000 {method 'acquire' of '_thread.RLock' objects}
+        1    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\contextlib.py:139(__exit__)
+        6    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\logging\__init__.py:359(getMessage)
+        3    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\logging\__init__.py:119(getLevelName)
+       15    0.000    0.000    0.000    0.000 {method 'find' of 'bytearray' objects}
+        1    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\fnmatch.py:80(translate)
+        3    0.000    0.000    0.000    0.000 {built-in method _codecs.charmap_encode}
+        9    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\logging\__init__.py:806(filter)
+        6    0.000    0.000    0.000    0.000 {built-in method fromkeys}
+        1    0.000    0.000    0.000    0.000 C:\Users\Rando\Workspaces\gnosis-rag\profile_embedding_pipeline.py:118(profile_function)
+        1    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\sre_compile.py:437(<listcomp>)
+        6    0.000    0.000    0.000    0.000 {method 'find' of 'str' objects}
+       19    0.000    0.000    0.000    0.000 {built-in method builtins.iter}
+        1    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\sre_parse.py:868(_parse_flags)
+       13    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\sre_parse.py:169(__setitem__)
+        2    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\logging\__init__.py:219(_acquireLock)
+        3    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\threading.py:1430(current_thread)
+        3    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\threading.py:1129(name)
+        2    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\sre_compile.py:516(_get_charset_prefix)
+       12    0.000    0.000    0.000    0.000 {built-in method nt.fspath}
+        5    0.000    0.000    0.000    0.000 {built-in method time.time}
+        3    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\ntpath.py:35(_get_bothseps)
+        3    0.000    0.000    0.000    0.000 {built-in method builtins.max}
+       14    0.000    0.000    0.000    0.000 {method 'release' of '_thread.RLock' objects}
+        2    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\logging\__init__.py:228(_releaseLock)
+        3    0.000    0.000    0.000    0.000 {built-in method sys._getframe}
+        9    0.000    0.000    0.000    0.000 {method 'is_symlink' of 'nt.DirEntry' objects}
+        3    0.000    0.000    0.000    0.000 {method 'rstrip' of 'str' objects}
+        1    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\types.py:176(__get__)
+        3    0.000    0.000    0.000    0.000 {built-in method nt.getpid}
+        2    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\logging\__init__.py:1710(getEffectiveLevel)
+        3    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\multiprocessing\process.py:37(current_process)
+        3    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\multiprocessing\process.py:189(name)
+        6    0.000    0.000    0.000    0.000 {built-in method _thread.get_ident}
+        1    0.000    0.000    0.000    0.000 C:\Users\Rando\Workspaces\gnosis-rag\profile_embedding_pipeline.py:79(start_monitoring)
+        1    0.000    0.000    0.000    0.000 C:\Users\Rando\Workspaces\gnosis-rag\profile_embedding_pipeline.py:84(stop_monitoring)
+        2    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\logging\__init__.py:1307(disable)
+        1    0.000    0.000    0.000    0.000 {method 'translate' of 'bytearray' objects}
+        1    0.000    0.000    0.000    0.000 {method 'disable' of '_lsprof.Profiler' objects}
+        1    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\enum.py:801(value)
+        1    0.000    0.000    0.000    0.000 C:\Users\Rando\AppData\Local\Programs\Python\Python310\lib\pathlib.py:43(_is_wildcard_pattern)
+        1    0.000    0.000    0.000    0.000 {built-in method _stat.S_ISDIR}
+        1    0.000    0.000    0.000    0.000 {method 'insert' of 'list' objects}
+        1    0.000    0.000    0.000    0.000 {built-in method sys.audit}
+
+

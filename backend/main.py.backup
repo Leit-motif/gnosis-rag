@@ -15,16 +15,9 @@ import re
 import traceback
 import time
 import json
-import sys
-import os
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-
-from rag_pipeline import RAGPipeline
-from obsidian_loader_v2 import ObsidianLoaderV2
-from utils import load_config, ensure_directories, validate_config
-from fast_indexer import FastIndexer, FAST_CONFIG
-
-
+from .rag_pipeline import RAGPipeline
+from .obsidian_loader_v2 import ObsidianLoaderV2
+from .utils import load_config, ensure_directories, validate_config
 
 
 
@@ -64,8 +57,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
-
 # Plugin file paths
 plugin_dir = Path(__file__).parent.parent / "plugin"
 openapi_path = plugin_dir / "openapi.yaml"
@@ -95,12 +86,16 @@ async def get_logo():
 async def get_legal():
     return {"terms_of_use": "This is a prototype plugin. Use at your own risk."}
 
-# Unified save request model - handles both conversation saving and exact content
-class SaveRequest(BaseModel):
+# Model for save conversation request
+class SaveConversationRequest(BaseModel):
+    session_id: str
     conversation_name: str
-    session_id: Optional[str] = None  # For conversation-based saving
-    messages: Optional[List[Dict[str, str]]] = None  # For direct message saving
-    content: Optional[str] = None  # For exact content saving
+    messages: Optional[List[Dict[str, str]]] = None  # Add optional messages field
+
+# After the SaveConversationRequest model definition, add a new model for exact content
+class SaveExactContentRequest(BaseModel):
+    conversation_name: str
+    content: str
 
 # Initialize components
 try:
@@ -238,14 +233,10 @@ async def index_vault():
             detail=detail
         )
 
-@app.post("/save")
-async def save_content(request: SaveRequest):
+@app.post("/save_conversation")
+async def save_conversation(request: SaveConversationRequest):
     """
-    Save conversation or content to the current day's page in the Obsidian vault.
-    Supports three modes:
-    1. Direct content: provide 'content' field
-    2. Direct messages: provide 'messages' field  
-    3. Session-based: provide 'session_id' field
+    Save the current conversation to the current day's page in the Obsidian vault
     """
     try:
         # --- BEGIN ADDED LOGGING ---
@@ -256,15 +247,8 @@ async def save_content(request: SaveRequest):
         
         logger.info(f"Saving conversation {request.conversation_name} from session {request.session_id}")
         
-        # Handle direct content saving (highest priority)
-        if request.content is not None:
-            logger.info(f"Using provided content directly")
-            conversation_content = []
-            conversation_content.append(f"## My Obsidian Helper: {request.conversation_name}")
-            conversation_content.append(f"_Saved on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}_\n")
-            conversation_content.append(request.content)
-        # Handle direct messages (second priority)
-        elif request.messages is not None and len(request.messages) > 0:
+        # Skip session lookup if conversation messages are provided directly
+        if request.messages is not None and len(request.messages) > 0:
             logger.info(f"Using provided messages directly instead of session lookup")
             # Format the conversation with blockquotes and proper Markdown
             conversation_content = []
@@ -295,13 +279,8 @@ async def save_content(request: SaveRequest):
                     
                     conversation_content.append("")  # Add blank line after exchange
         else:
-            # Session-based retrieval logic (lowest priority)
-            if not request.session_id:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Must provide either 'content', 'messages', or 'session_id' to save"
-                )
-            
+            # Original session-based retrieval logic
+            # Handle special session ID cases
             session_id = request.session_id
             if session_id in ["current", "default"]:
                 # Find the most recent session
@@ -439,7 +418,7 @@ async def save_content(request: SaveRequest):
         )
 
 @app.post("/debug_save_conversation")
-async def debug_save_conversation(request: SaveRequest):
+async def debug_save_conversation(request: SaveConversationRequest):
     """
     Debug version of save_conversation with more detailed logging and error information
     """
@@ -451,11 +430,9 @@ async def debug_save_conversation(request: SaveRequest):
         },
         "request": {
             "session_id": request.session_id,
-            "conversation_name": request.conversation_name,
-            "has_content": bool(request.content),
-            "has_messages": bool(request.messages)
+            "conversation_name": request.conversation_name
         },
-        "session_exists": bool(request.session_id and request.session_id in rag_pipeline.conversation_memory.sessions),
+        "session_exists": request.session_id in rag_pipeline.conversation_memory.sessions,
         "interactions_count": 0
     }
     
@@ -478,7 +455,7 @@ async def debug_save_conversation(request: SaveRequest):
         }
         
         # Check for session and conversations
-        if request.session_id and request.session_id in rag_pipeline.conversation_memory.sessions:
+        if request.session_id in rag_pipeline.conversation_memory.sessions:
             interactions = rag_pipeline.conversation_memory.sessions[request.session_id]
             debug_info["interactions_count"] = len(interactions)
             
@@ -625,121 +602,65 @@ async def debug_all_conversations():
         "sessions": sessions_info
     }
 
-@app.post("/index_fast")
-async def index_vault_fast():
+# Add a new endpoint that accepts exact content for saving
+@app.post("/save_exact_content")
+async def save_exact_content(request: SaveExactContentRequest):
     """
-    Ultra-fast indexing endpoint optimized for large vaults.
-    Uses aggressive optimization for maximum speed and throughput.
+    Save explicitly provided content to the current day's page in the Obsidian vault
     """
     try:
-        logger.info("[FAST-INDEX] Starting ultra-fast vault indexing...")
+        logger.info(f"Saving exact content with name: {request.conversation_name}")
         
-        # Load documents from vault
-        documents = vault_loader.load_vault(config)
-        logger.info(f"Loaded {len(documents)} documents from vault")
-
-        if not documents:
-            logger.warning("No documents found to index.")
-            return {
-                "status": "warning",
-                "message": "No documents found to index.",
-                "document_count": 0
-            }
+        # Get current date for daily note
+        today = datetime.now()
+        today_str = today.strftime("%Y-%m-%d")
+        month_str = today.strftime("%m")
+        year_str = today.strftime("%Y")
         
-        # Prepare documents for fast indexing
-        indexed_documents = [
-            {
-                'id': f"{doc.metadata.get('source', 'unknown_source')}#{doc.metadata.get('chunk_id', 'unknown_chunk')}", 
-                'content': doc.page_content,
-                'metadata': doc.metadata
-            }
-            for doc in documents
-        ]
+        # Use the vault path from config, which already includes up to the year directory
+        vault_path = Path(config["vault"]["path"])
         
-        # Create fast indexer using main config
-        fast_indexer = FastIndexer(config)
+        # Construct the path with year and month
+        daily_notes_folder = vault_path / year_str / month_str
+        daily_note_filename = f"{today_str}.md"
         
-        # Start fast indexing
-        result = await fast_indexer.index_documents_fast(indexed_documents, resume=True)
+        # Make sure directory exists
+        daily_notes_folder.mkdir(parents=True, exist_ok=True)
         
-        if result["status"] == "success":
-                    logger.info(f"[SUCCESS] Fast indexing completed successfully!")
-        logger.info(f"[STATS] Processed {result['processed_documents']} documents in {result['elapsed_time']}")
-        logger.info(f"[PERFORMANCE] Speed: {result['documents_per_second']} docs/sec")
-            
-            return {
-                "status": "success",
-                "message": f"Ultra-fast indexed {result['processed_documents']}/{result['total_documents']} documents",
-                "document_count": result['processed_documents'],
-                "total_documents": result['total_documents'],
-                "failed_documents": result['failed_documents'],
-                "elapsed_time": result['elapsed_time'],
-                "documents_per_second": result['documents_per_second'],
-                "index_path": result.get('index_path', ''),
-                "embeddings_shape": result.get('embeddings_shape', ''),
-                "optimization": "ultra_fast"
-            }
+        daily_note_path = daily_notes_folder / daily_note_filename
+        logger.info(f"Using daily note path: {daily_note_path}")
+        
+        # Format the content with headers
+        conversation_content = []
+        conversation_content.append(f"## My Obsidian Helper: {request.conversation_name}")
+        conversation_content.append(f"_Saved on: {today.strftime('%Y-%m-%d %H:%M:%S')}_\n")
+        conversation_content.append(request.content)
+        
+        formatted_conversation = "\n".join(conversation_content)
+        
+        # If the daily note doesn't exist, create it
+        if not daily_note_path.exists():
+            logger.info(f"Creating new daily note: {daily_note_path}")
+            # Ensure the directory exists
+            daily_note_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(daily_note_path, "w", encoding="utf-8") as f:
+                f.write(f"# {today_str}\n\n{formatted_conversation}\n")
         else:
-            logger.error(f"Fast indexing failed: {result.get('error', 'Unknown error')}")
-            return {
-                "status": "error",
-                "message": f"Fast indexing failed: {result.get('error', 'Unknown error')}",
-                "processed_documents": result.get('processed_documents', 0),
-                "error_details": result.get('error', 'Unknown error')
-            }
+            # Append to existing daily note
+            logger.info(f"Appending to existing daily note: {daily_note_path}")
+            with open(daily_note_path, "a", encoding="utf-8") as f:
+                f.write(f"\n\n{formatted_conversation}\n")
         
+        return {
+            "status": "success",
+            "message": f"Content '{request.conversation_name}' saved to {daily_note_path.name}",
+            "file_path": str(daily_note_path.relative_to(Path(config["vault"]["path"])))
+        }
     except Exception as e:
-        logger.error(f"Fast indexing endpoint failed: {str(e)}", exc_info=True)
+        logger.error(f"Failed to save exact content: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail=f"Fast indexing failed: {str(e)}"
-        )
-
-@app.get("/index_fast_status")
-async def get_fast_indexing_status():
-    """
-    Get the status of fast indexing operation
-    """
-    try:
-        fast_indexer = FastIndexer(config)
-        status = fast_indexer.get_indexing_status()
-        return status
-    except Exception as e:
-        logger.error(f"Failed to get fast indexing status: {str(e)}")
-        return {"status": "error", "error": str(e)}
-
-@app.post("/index_fast_resume")
-async def resume_fast_indexing():
-    """
-    Resume fast indexing from last checkpoint
-    """
-    try:
-        logger.info("Resuming fast indexing from checkpoint...")
-        
-        # Load documents from vault
-        documents = vault_loader.load_vault(config)
-        
-        # Prepare documents for indexing
-        indexed_documents = [
-            {
-                'id': f"{doc.metadata.get('source', 'unknown_source')}#{doc.metadata.get('chunk_id', 'unknown_chunk')}", 
-                'content': doc.page_content,
-                'metadata': doc.metadata
-            }
-            for doc in documents
-        ]
-        
-        # Create fast indexer and resume
-        fast_indexer = FastIndexer(config)
-        result = await fast_indexer.index_documents_fast(indexed_documents, resume=True)
-        
-        return result
-        
-    except Exception as e:
-        logger.error(f"Failed to resume fast indexing: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to resume fast indexing: {str(e)}"
+            detail=f"Failed to save exact content: {str(e)}"
         )
 
 if __name__ == "__main__":
