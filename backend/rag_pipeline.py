@@ -1,29 +1,30 @@
-from typing import List, Optional, Dict, Any, Tuple
+import json
+import logging
+import math
 import os
+import re
+import sys
+import time
+import unicodedata
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
 import faiss
 import numpy as np
-from datetime import datetime, timedelta, timezone, date
 from openai import OpenAI
+from sentence_transformers import SentenceTransformer
 from tenacity import retry, stop_after_attempt, wait_exponential
-import logging
-from fastapi import HTTPException
-import time
 from tqdm import tqdm
-from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import math
-import tempfile
-import shutil
-import sys
-import os
+
+from fastapi import HTTPException
+
+# This must be before the local application imports to ensure correct module resolution
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from graph_retriever import GraphRetriever
-from conversation_memory import ConversationMemory
-import json
-import re
-import unicodedata
-from sentence_transformers import SentenceTransformer
+from conversation_memory import ConversationMemory  # noqa: E402
+from graph_retriever import GraphRetriever  # noqa: E402
 
 def sanitize_for_json(text: str) -> str:
     """
@@ -119,148 +120,29 @@ class RAGPipeline:
         if not hasattr(self, 'client'):
             self.client = OpenAI(api_key=chat_api_key)
             
-        self.document_store = {}  # Initialize empty document store
-        self.doc_embeddings = {}  # Initialize empty embeddings store
-        self._date_cache = {}  # Cache for date extraction to avoid repeated processing
+        self.document_store = {}
+        self.doc_embeddings = {}
+        self._date_cache = {}
         
-        # Initialize vector store configuration
         vector_store_config = config.get("vector_store", {})
-        self.dimension = vector_store_config.get("dimension", self.dimension)  # Use config or default
+        self.dimension = vector_store_config.get("dimension", self.dimension)
         
-        # Initialize vector store paths with proper Windows path handling
-        self.index_path = Path(vector_store_config.get("index_path", "data/vector_store/faiss.index")).resolve()
-        self.embeddings_path = Path(os.path.join(os.path.dirname(str(self.index_path)), "embeddings.json"))
+        base_path = Path(vector_store_config.get("base_path", "data/vector_store")).resolve()
+        self.index_path = base_path / "faiss.index"
+        self.doc_store_path = base_path / "document_store.json"
+        self.embeddings_path = base_path / "embeddings.json"
         
-        # Create directory if it doesn't exist
-        self.index_path.parent.mkdir(parents=True, exist_ok=True)
+        base_path.mkdir(parents=True, exist_ok=True)
         
-        index_loaded_from_disk = False
-        # Try loading existing index first
-        if self.index_path.exists() and self.embeddings_path.exists():
-            try:
-                self.logger.info(f"Loading existing index from {self.index_path}")
-                self.index = faiss.read_index(str(self.index_path))
-                with open(self.embeddings_path, 'r', encoding='utf-8') as f:
-                    self.doc_embeddings = json.load(f)
-                
-                # Populate document_store from loaded embeddings metadata
-                # Assuming embeddings.json structure is { "id": {"content": "...", "metadata": {...}} }
-                # If not, this needs adjustment based on actual embeddings.json structure.
-                # Let's assume for now doc_embeddings stores { "id": embedding_vector_list } 
-                # and we need a separate file or mechanism to get content/metadata.
-                # 
-                # *** Revision: Based on index_documents, embeddings.json looks like { "id": vector }
-                # *** and document_store needs { "id": {"content": ..., "metadata": ...} }
-                # *** The current code DOES NOT save content/metadata persistently alongside embeddings.json!
-                # *** We need to save self.document_store to a file as well.
-                # 
-                # Let's save document_store to document_store.json during index_documents
-                # and load it here.
-                
-                document_store_path = self.embeddings_path.parent / "document_store.json"
-                if document_store_path.exists():
-                    self.logger.info(f"Loading document store from {document_store_path}")
-                    try:
-                        with open(document_store_path, 'r', encoding='utf-8') as f:
-                            self.document_store = json.load(f)
-                            # Ensure keys are strings if Faiss IDs are used as keys directly
-                            self.document_store = {str(k): v for k, v in self.document_store.items()}
-                            
-                            # Check for and extract dates from paths for existing documents
-                            self._populate_missing_dates_from_paths()
-                    except UnicodeDecodeError as ude:
-                        self.logger.error(f"Unicode decode error loading document store: {str(ude)}")
-                        # Try loading with a more permissive encoding that replaces invalid characters
-                        self.logger.info("Attempting to load document store with errors='replace'")
-                        with open(document_store_path, 'r', encoding='utf-8', errors='replace') as f:
-                            self.document_store = json.load(f)
-                            # Ensure keys are strings if Faiss IDs are used as keys directly
-                            self.document_store = {str(k): v for k, v in self.document_store.items()}
-                            
-                            # Check for and extract dates from paths for existing documents
-                            self._populate_missing_dates_from_paths()
-                else:
-                     self.logger.warning(f"Document store file not found at {document_store_path}. Document content will be unavailable unless re-indexed.")
-                     self.document_store = {} # Ensure it's initialized if file not found
-                
-                self.logger.info(f"Successfully loaded index with {self.index.ntotal} vectors and associated data.")
-                index_loaded_from_disk = True # Mark as loaded
-            except Exception as e:
-                self.logger.error(f"Failed to load existing index or document store: {str(e)}")
-                self.logger.info("Will try loading from temp embeddings")
+        self.is_ready = False
+        try:
+            self._load_or_initialize_store()
+            self.is_ready = True
+            self.logger.info("RAG pipeline is ready.")
+        except Exception as e:
+            self.logger.error(f"RAG pipeline initialization failed: {str(e)}", exc_info=True)
+            # is_ready remains False
         
-        # If index wasn't loaded from disk, try temp or create new
-        if not index_loaded_from_disk:
-            # If no existing index or loading failed, try temp embeddings
-            if self._have_temp_embeddings():
-                self.logger.info("Found temporary embeddings, loading them...")
-                try:
-                    embeddings, documents = self._load_temp_embeddings()
-                    self.logger.info(f"Loaded {len(embeddings)} embeddings")
-                    
-                    # Store documents
-                    for i, doc in enumerate(documents):
-                        self.document_store[str(i)] = {
-                            'content': doc['content'],
-                            'metadata': doc['metadata']
-                        }
-                        self.doc_embeddings[str(i)] = embeddings[i].tolist()
-                    
-                    # Create index from embeddings
-                    self.index = self._create_faiss_index(embeddings)
-                    self.logger.info(f"Created FAISS index with {self.index.ntotal} vectors")
-                    
-                    # Save the index and embeddings
-                    try:
-                        self._save_index(self.index_path)
-                        with open(self.embeddings_path, 'w', encoding='utf-8') as f:
-                            json.dump(self.doc_embeddings, f)
-                        # Save the document store as well
-                        document_store_path = self.embeddings_path.parent / "document_store.json"
-                        # Create a backup of the current file if it exists
-                        backup_path = document_store_path.with_suffix('.json.bak')
-                        if document_store_path.exists():
-                            try:
-                                shutil.copy2(document_store_path, backup_path)
-                                self.logger.info(f"Created backup of document store at {backup_path}")
-                            except Exception as e:
-                                self.logger.warning(f"Failed to create backup: {str(e)}")
-                        
-                        # More robust save approach: write to temp file in same directory
-                        temp_path = document_store_path.with_suffix('.json.tmp')
-                        try:
-                            # Use the custom JSON encoder to handle date objects
-                            with open(temp_path, 'w', encoding='utf-8') as f:
-                                json.dump(self.document_store, f, ensure_ascii=False, indent=2, cls=CustomJSONEncoder)
-                            
-                            # On Windows, ensure the target file doesn't exist before renaming
-                            if document_store_path.exists():
-                                document_store_path.unlink()
-                            
-                            # Rename the temp file to the target file
-                            os.rename(temp_path, document_store_path)
-                            self.logger.info(f"Successfully saved document store to {document_store_path}")
-                        except Exception as e:
-                            self.logger.error(f"Failed to save document store: {str(e)}")
-                            # If we have a backup, try to restore it
-                            if backup_path.exists():
-                                try:
-                                    if document_store_path.exists():
-                                        document_store_path.unlink()
-                                    shutil.copy2(backup_path, document_store_path)
-                                    self.logger.info("Restored document store from backup")
-                                except Exception as restore_e:
-                                    self.logger.error(f"Failed to restore backup: {str(restore_e)}")
-                    except Exception as e:
-                        self.logger.warning(f"Failed to save index to disk: {str(e)}")
-                except Exception as e:
-                    self.logger.error(f"Failed to load temp embeddings: {str(e)}")
-                    self.logger.info("Creating empty index")
-                    self.index = self._init_faiss()
-            else:
-                self.logger.info("No existing or temporary embeddings found, creating empty index")
-                self.index = self._init_faiss()
-            
         # Initialize graph retriever (ALWAYS RUN THIS)
         self.graph_retriever = GraphRetriever(config["vault"]["path"])
         self.graph_retriever.build_graph()
@@ -274,8 +156,79 @@ class RAGPipeline:
             context_window=memory_config.get("context_window", 5)
         )
 
-    def _init_faiss(self) -> faiss.Index:
-        """Initialize FAISS index"""
+    def check_health(self) -> Tuple[bool, str]:
+        """
+        Checks the health of the RAG pipeline.
+        Returns a tuple of (is_healthy, message).
+        """
+        if not self.is_ready:
+            return False, "RAG pipeline is not ready. Check initialization logs."
+        if not self.index or self.index.ntotal == 0:
+            return False, "FAISS index is not loaded or is empty."
+        if not self.document_store:
+            return False, "Document store is empty."
+        if self.index.ntotal != len(self.document_store):
+            return (
+                False,
+                f"Index and document store are out of sync. "
+                f"Index size: {self.index.ntotal}, "
+                f"Store size: {len(self.document_store)}",
+            )
+        return True, "RAG pipeline is healthy."
+
+    def _atomic_json_save(self, data: Any, path: Path):
+        """Saves a JSON file atomically."""
+        temp_path = path.with_suffix(f"{path.suffix}.tmp")
+        try:
+            with open(temp_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2, cls=CustomJSONEncoder)
+            os.replace(temp_path, path)
+            self.logger.info(f"Successfully saved JSON to {path}")
+        except Exception as e:
+            self.logger.error(f"Failed to save JSON to {path}: {str(e)}")
+            if temp_path.exists():
+                temp_path.unlink()
+            raise
+
+    def _load_or_initialize_store(self):
+        """Loads the index and document store or initializes a new one."""
+        if (
+            self.index_path.exists()
+            and self.doc_store_path.exists()
+            and self.embeddings_path.exists()
+        ):
+            try:
+                self.logger.info(f"Loading assets from {self.index_path.parent}...")
+                self.index = faiss.read_index(str(self.index_path))
+
+                with open(self.doc_store_path, "r", encoding="utf-8") as f:
+                    self.document_store = json.load(f)
+
+                with open(self.embeddings_path, "r", encoding="utf-8") as f:
+                    self.doc_embeddings = json.load(f)
+
+                if self.index.ntotal != len(self.document_store):
+                    raise ValueError(
+                        "Index and document store are out of sync. "
+                        "Please re-index."
+                    )
+                self.logger.info(
+                    f"Successfully loaded index with {self.index.ntotal} vectors."
+                )
+                self._populate_missing_dates_from_paths()
+                return
+            except Exception as e:
+                self.logger.error(
+                    f"Failed to load existing index/store: {e}. "
+                    "Will attempt to re-initialize."
+                )
+                # Fall through to initialize a new store
+
+        self.logger.info("Initializing new FAISS index and document store.")
+        self._init_faiss()
+
+    def _init_faiss(self) -> None:
+        """Initializes an empty FAISS index."""
         try:
             # Ensure there's a valid dimension in the config
             dimension = self.config.get("vector_store", {}).get("dimension", 1536)
@@ -300,7 +253,10 @@ class RAGPipeline:
             
             # Create a new index first
             self.logger.info(f"Creating new FAISS index with dimension {dimension}")
-            index = faiss.IndexFlatIP(dimension)  # Inner product for cosine similarity
+            self.index = faiss.IndexFlatL2(self.dimension)
+            self.logger.info(
+                f"Initialized new FAISS index with dimension {self.dimension}"
+            )
             
             if index_path.exists():
                 try:
@@ -311,13 +267,13 @@ class RAGPipeline:
                     self.logger.warning(f"Could not load existing index: {str(e)}")
                     self.logger.info("Will create a new index instead")
             
-            return index
+            return self.index
             
         except Exception as e:
-            self.logger.error(f"Failed to initialize FAISS index: {str(e)}")
+            self.logger.error(f"Error initializing FAISS index: {e}", exc_info=True)
             # Create an in-memory index as fallback with default dimension
             self.logger.info("Creating in-memory index as fallback with dimension 1536")
-            return faiss.IndexFlatIP(1536)  # Default OpenAI embedding dimension
+            return faiss.IndexFlatL2(1536)  # Default OpenAI embedding dimension
     
     def _embed_local(self, texts: List[str]) -> np.ndarray:
         """Get embeddings using local sentence-transformers model - optimized for speed"""
@@ -475,48 +431,17 @@ class RAGPipeline:
             self.logger.error(f"Failed to process batch {batch_idx}: {str(e)}")
             return None, []
 
-    def _save_index(self, index_path: Path) -> None:
-        """Save FAISS index to disk with proper Windows file handling"""
-        try:
-            # Create a backup of the current index if it exists
-            backup_path = index_path.with_suffix('.index.bak')
-            if index_path.exists():
-                try:
-                    shutil.copy2(index_path, backup_path)
-                    self.logger.info(f"Created backup of index at {backup_path}")
-                except Exception as e:
-                    self.logger.warning(f"Failed to create backup of index: {str(e)}")
-            
-            # Save to a temporary file in the same directory
-            temp_path = index_path.with_suffix('.index.tmp')
-            
-            # Save to temporary file
-            faiss.write_index(self.index, str(temp_path))
-            
-            # Replace the original file with the temporary file
-            try:
-                # On Windows, ensure the target file doesn't exist before renaming
-                if index_path.exists():
-                    index_path.unlink()
-                
-                # Rename the temp file to the target file
-                os.rename(temp_path, index_path)
-                self.logger.info(f"Successfully saved index with {self.index.ntotal} vectors")
-            except Exception as e:
-                self.logger.error(f"Failed to replace index file: {str(e)}")
-                # If we have a backup, try to restore it
-                if backup_path.exists():
-                    try:
-                        if index_path.exists():
-                            index_path.unlink()
-                        shutil.copy2(backup_path, index_path)
-                        self.logger.info("Restored index from backup")
-                    except Exception as restore_e:
-                        self.logger.error(f"Failed to restore backup: {str(restore_e)}")
-                raise
-        except Exception as e:
-            self.logger.error(f"Failed to save index: {str(e)}")
-            raise
+    def _save_index(self) -> None:
+        """Saves the FAISS index and document/embedding stores atomically."""
+        if not self.index:
+            self.logger.warning("Attempted to save but index is not initialized.")
+            return
+
+        self.logger.info(f"Saving index and stores to {self.index_path.parent}...")
+        faiss.write_index(self.index, str(self.index_path))
+        self._atomic_json_save(self.document_store, self.doc_store_path)
+        self._atomic_json_save(self.doc_embeddings, self.embeddings_path)
+        self.logger.info("Successfully saved all data stores.")
 
     def _save_embeddings_temp(self, embeddings: List[np.ndarray], documents: List[Dict[str, Any]]) -> Path:
         """Save embeddings and documents to temporary files"""
@@ -630,47 +555,9 @@ class RAGPipeline:
             
             # Save index and embeddings
             try:
-                self._save_index(self.index_path)
-                with open(self.embeddings_path, 'w', encoding='utf-8') as f:
-                    json.dump(self.doc_embeddings, f)
-                # Save the document store as well
-                document_store_path = self.embeddings_path.parent / "document_store.json"
-                # Create a backup of the current file if it exists
-                backup_path = document_store_path.with_suffix('.json.bak')
-                if document_store_path.exists():
-                    try:
-                        shutil.copy2(document_store_path, backup_path)
-                        self.logger.info(f"Created backup of document store at {backup_path}")
-                    except Exception as e:
-                        self.logger.warning(f"Failed to create backup: {str(e)}")
-                
-                # More robust save approach: write to temp file in same directory
-                temp_path = document_store_path.with_suffix('.json.tmp')
-                try:
-                    # Use the custom JSON encoder to handle date objects
-                    with open(temp_path, 'w', encoding='utf-8') as f:
-                        json.dump(self.document_store, f, ensure_ascii=False, indent=2, cls=CustomJSONEncoder)
-                    
-                    # On Windows, ensure the target file doesn't exist before renaming
-                    if document_store_path.exists():
-                        document_store_path.unlink()
-                    
-                    # Rename the temp file to the target file
-                    os.rename(temp_path, document_store_path)
-                    self.logger.info(f"Successfully saved document store to {document_store_path}")
-                except Exception as e:
-                    self.logger.error(f"Failed to save document store: {str(e)}")
-                    # If we have a backup, try to restore it
-                    if backup_path.exists():
-                        try:
-                            if document_store_path.exists():
-                                document_store_path.unlink()
-                            shutil.copy2(backup_path, document_store_path)
-                            self.logger.info("Restored document store from backup")
-                        except Exception as restore_e:
-                            self.logger.error(f"Failed to restore backup: {str(restore_e)}")
+                self._save_index()
             except Exception as e:
-                self.logger.warning(f"Failed to save to disk: {str(e)}")
+                self.logger.error(f"Failed to save index after updates: {e}", exc_info=True)
             
             elapsed = time.time() - start_time
             docs_per_sec = len(documents) / elapsed if elapsed > 0 else 0
@@ -847,11 +734,19 @@ class RAGPipeline:
         tags: Optional[List[str]] = None,
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None,
-        retrieval_mode: str = "vector"
+        retrieval_mode: str = "vector",
+        date_range: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
-        Query the RAG pipeline with conversation memory and filtering options
+        Queries the RAG pipeline with enhanced filtering and context.
         """
+        health_ok, message = self.check_health()
+        if not health_ok:
+            self.logger.error(f"Query failed health check: {message}")
+            raise HTTPException(status_code=503, detail=f"Service Unavailable: {message}. Please try re-indexing the vault.")
+
+        self.logger.info(f"Received query: '{query}' with mode '{retrieval_mode}'")
+        start_time = time.time()
         try:
             # Use instance conversation memory if none provided
             conversation_memory = conversation_memory or self.conversation_memory

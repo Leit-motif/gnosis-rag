@@ -46,8 +46,7 @@ logs/
 
 # Data and temporary files
 data/temp/
-data/vector_store/faiss.index
-data/vector_store/embeddings.json
+data/vector_store/*
 !data/vector_store/.gitkeep
 data/conversations/*
 !data/conversations/.gitkeep

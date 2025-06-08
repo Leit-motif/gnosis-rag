@@ -129,17 +129,25 @@ paths:
           required: true
           description: The search query
         - in: query
-          name: limit
+          name: session_id
           schema:
-            type: integer
-            default: 5
-          description: Maximum number of results to return
-        - in: query  
-          name: similarity_threshold
+            type: string
+          required: false
+          description: The session ID to maintain conversation context.
+        - in: query
+          name: tags
           schema:
-            type: number
-            default: 0.7
-          description: Minimum similarity threshold for results
+            type: array
+            items:
+              type: string
+          required: false
+          description: A list of tags to filter the search.
+        - in: query
+          name: date_range
+          schema:
+            type: string
+          required: false
+          description: A date range to filter the search (e.g., 'today', 'last_7_days', '2023-01-01:2023-01-31').
       responses:
         "200":
           description: Query results

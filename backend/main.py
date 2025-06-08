@@ -1,32 +1,31 @@
-from fastapi import FastAPI, Query, HTTPException, Request
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import List, Optional, Dict, Any
-from datetime import datetime, timedelta, timezone
 import logging
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse
 import os
-from pathlib import Path
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
-from slowapi.errors import RateLimitExceeded
 import re
-import traceback
-import time
-import json
 import sys
-import os
+import traceback
+from datetime import datetime
+from pathlib import Path
+from typing import Dict, List, Optional
+
+from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse
+from pydantic import BaseModel
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
+
+# This must be before the local application imports
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from rag_pipeline import RAGPipeline
-from obsidian_loader_v2 import ObsidianLoaderV2
-from utils import load_config, ensure_directories, validate_config
-from fast_indexer import FastIndexer, FAST_CONFIG
-
-
-
-
+from fast_indexer import FastIndexer  # noqa: E402
+from obsidian_loader_v2 import ObsidianLoaderV2  # noqa: E402
+from rag_pipeline import RAGPipeline  # noqa: E402
+from utils import (
+    ensure_directories,
+    load_config,
+    validate_config
+)  # noqa: E402
 
 # Load and validate configuration
 config = load_config()
@@ -37,7 +36,7 @@ ensure_directories(config)
 logging.basicConfig(
     level=config["logging"]["level"],
     filename=config["logging"]["file"],
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
 
@@ -47,7 +46,7 @@ limiter = Limiter(key_func=get_remote_address)
 app = FastAPI(
     title="Gnosis RAG API",
     description="API for querying and analyzing Obsidian vaults using hybrid RAG",
-    version="1.0.0"
+    version="1.0.0",
 )
 
 # State management for the limiter
@@ -65,21 +64,23 @@ app.add_middleware(
 )
 
 
-
 # Plugin file paths
 plugin_dir = Path(__file__).parent.parent / "plugin"
 openapi_path = plugin_dir / "openapi.yaml"
 plugin_json_path = plugin_dir / "ai-plugin.json"
+
 
 # Route to serve OpenAPI specification
 @app.get("/openapi.yaml", include_in_schema=False)
 async def get_openapi_yaml():
     return FileResponse(openapi_path, media_type="text/yaml")
 
+
 # Route to serve plugin manifest
 @app.get("/.well-known/ai-plugin.json", include_in_schema=False)
 async def get_plugin_manifest():
     return FileResponse(plugin_json_path, media_type="application/json")
+
 
 # Routes for other required plugin files
 @app.get("/logo.png", include_in_schema=False)
@@ -87,13 +88,17 @@ async def get_logo():
     # For now, we'll just return a placeholder message
     # In a production environment, we would serve an actual logo file
     return JSONResponse(
-        content={"message": "Logo placeholder. In production, this would be an image file."},
-        status_code=200
+        content={
+            "message": "Logo placeholder. In production, this would be an image file."
+        },
+        status_code=200,
     )
+
 
 @app.get("/legal", include_in_schema=False)
 async def get_legal():
     return {"terms_of_use": "This is a prototype plugin. Use at your own risk."}
+
 
 # Unified save request model - handles both conversation saving and exact content
 class SaveRequest(BaseModel):
@@ -102,18 +107,31 @@ class SaveRequest(BaseModel):
     messages: Optional[List[Dict[str, str]]] = None  # For direct message saving
     content: Optional[str] = None  # For exact content saving
 
+
 # Initialize components
 try:
     logger.info("Initializing RAG pipeline...")
     rag_pipeline = RAGPipeline(config)
-    
+
     logger.info("Loading Obsidian vault...")
     vault_loader = ObsidianLoaderV2(config["vault"]["path"])
-    
+
     logger.info("Initialization complete!")
 except Exception as e:
     logger.error(f"Failed to initialize: {str(e)}")
     raise
+
+
+@app.get("/health")
+def health_check():
+    """
+    Provides a comprehensive health check of the API and RAG pipeline.
+    """
+    healthy, message = rag_pipeline.check_health()
+    if not healthy:
+        raise HTTPException(status_code=503, detail=f"Service Unavailable: {message}")
+    return {"status": "ok", "message": message}
+
 
 # Restore the original /index endpoint
 @app.post("/index")
@@ -123,8 +141,12 @@ async def index_vault():
     This needs to be called before querying.
     """
     import asyncio
-    from openai import OpenAI
-    from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+    from tenacity import (
+        retry,
+        stop_after_attempt,
+        wait_exponential,
+        retry_if_exception_type
+    )
     
     # Rate limiting configuration
     BATCH_SIZE = 10  # Smaller batches to avoid rate limits
@@ -149,8 +171,11 @@ async def index_vault():
             
         except Exception as e:
             error_msg = str(e).lower()
-            if any(keyword in error_msg for keyword in ['rate limit', 'quota', '429', 'too many requests']):
-                logger.warning(f"Rate limit hit in batch {batch_num}, will retry after delay")
+            rate_limit_keywords = ['rate limit', 'quota', '429', 'too many requests']
+            if any(keyword in error_msg for keyword in rate_limit_keywords):
+                logger.warning(
+                    f"Rate limit hit in batch {batch_num}, will retry after delay"
+                )
                 await asyncio.sleep(30)  # Extra delay for rate limits
             raise
     
@@ -225,7 +250,11 @@ async def index_vault():
         # Provide specific error messages for common issues
         error_msg = str(e).lower()
         if any(keyword in error_msg for keyword in ['rate limit', 'quota', '429']):
-            detail = "OpenAI API rate limit exceeded. The indexing process has been optimized with rate limiting, but your current usage may have hit API limits. Please wait a few minutes and try again."
+            detail = (
+                "OpenAI API rate limit exceeded. The indexing process has been "
+                "optimized with rate limiting, but your current usage may have hit "
+                "API limits. Please wait a few minutes and try again."
+            )
         elif 'context_length_exceeded' in error_msg or 'maximum context length' in error_msg:
             detail = "Document chunks are too large for the API. The indexing process will automatically handle this in future runs."
         elif 'insufficient_quota' in error_msg or 'billing' in error_msg:
@@ -389,19 +418,34 @@ async def save_content(request: SaveRequest):
                 
                 conversation_content.append("")  # Add blank line after each complete exchange
         
-        # Get current date for daily note (moved out of the else block)
+        # Get current date for daily note
         today = datetime.now()
         today_str = today.strftime("%Y-%m-%d")
-        month_str = today.strftime("%m")
+        month_str = today.strftime("%m")  # e.g., "07" for July
         year_str = today.strftime("%Y")
+
+        # Intelligently determine the root for daily notes
+        base_path = Path(config["vault"]["path"])
+        daily_notes_root = base_path
         
-        # Use the vault path from config, which already includes up to the year directory
-        vault_path = Path(config["vault"]["path"])
-        
-        # Construct the path with year and month
-        daily_notes_folder = vault_path / year_str / month_str
+        # If the configured path ends in what looks like a year (e.g., /2025),
+        # we assume the user wants to save relative to the parent directory.
+        # This decouples the indexing scope from the saving location for daily notes.
+        if re.match(r"^\d{4}$", base_path.name):
+            logger.info(
+                f"Config path ends in a year ('{base_path.name}'). "
+                "Using parent directory as daily notes root."
+            )
+            daily_notes_root = base_path.parent
+        else:
+            logger.info(
+                "Using config path directly as daily notes root."
+            )
+
+        # Construct the final path within the determined root
+        daily_notes_folder = daily_notes_root / year_str / month_str
         daily_note_filename = f"{today_str}.md"
-        
+
         # Make sure directory exists
         daily_notes_folder.mkdir(parents=True, exist_ok=True)
         
@@ -525,88 +569,48 @@ async def query_vault(
     date_range: Optional[str] = None
 ):
     """
-    Query the Obsidian vault using the RAG pipeline
+    Query the vault with advanced filtering options.
     """
-    try:
-        logger.info(f"Processing query: {q}")
-        
-        # Parse date range if specified
-        start_date = None
-        end_date = None
-        if date_range:
-            try:
-                dates = date_range.split(',')
-                if len(dates) >= 1 and dates[0]:
-                    start_date = datetime.fromisoformat(dates[0])
-                if len(dates) >= 2 and dates[1]:
-                    end_date = datetime.fromisoformat(dates[1])
-            except ValueError as e:
-                logger.warning(f"Invalid date format in range '{date_range}': {e}")
-                # Continue with None values for dates
-        
-        # Generate session ID if not provided
-        if not session_id:
-            session_id = f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-            logger.info(f"Generated new session ID: {session_id}")
-        
-        # Execute query with specified filters
-        try:
-            return rag_pipeline.query(
-                query=q,
-                k=5,
-                session_id=session_id,
-                tags=tags,
-                start_date=start_date,
-                end_date=end_date
-            )
-        except Exception as e:
-            error_msg = str(e)
-            logger.error(f"Error during query execution: {error_msg}")
-            
-            # Handle rate limit errors specially
-            if "RetryError" in error_msg and ("RateLimitError" in error_msg or "429" in error_msg or "quota" in error_msg.lower()):
-                logger.error("OpenAI API rate limit or quota exceeded")
-                return JSONResponse(
-                    status_code=429,
-                    content={
-                        "status": "error",
-                        "message": "OpenAI API rate limit or quota exceeded. Please try again later or check your API usage and billing details.",
-                        "error": "rate_limit_exceeded"
-                    }
-                )
-            
-            # General API error
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to query the vault: {str(e)}"
-            )
-            
-    except Exception as e:
-        logger.error(f"Error processing query: {str(e)}")
+    health_ok, message = rag_pipeline.check_health()
+    if not health_ok:
         raise HTTPException(
-            status_code=500,
-            detail=f"Failed to process query: {str(e)}"
+            status_code=503,
+            detail=f"Service Unavailable: {message}. Please re-index the vault.",
         )
 
-@app.get("//query")
-@limiter.limit("10/minute")
-async def query_vault_double_slash(
-    request: Request,
-    q: str,
-    session_id: Optional[str] = Query(None),
-    tags: Optional[List[str]] = Query(None),
-    date_range: Optional[str] = None
-):
-    """
-    Alternative route for query to handle double slashes
-    """
-    return await query_vault(request, q, session_id, tags, date_range)
+    try:
+        logger.info(
+            f"Received query: q='{q}', session_id='{session_id}', "
+            f"tags={tags}, date_range='{date_range}'"
+        )
 
-# Add a new endpoint to see all available conversations
+        # Call the RAG pipeline
+        result = rag_pipeline.query(
+            question=q,
+            session_id=session_id,
+            tags=tags,
+            date_range=date_range,
+        )
+
+        logger.info(
+            f"Query successful. Returning {len(result.get('sources', []))} sources."
+        )
+        return result
+
+    except HTTPException as http_exc:
+        # Re-raise HTTPException directly to preserve status code and details
+        raise http_exc
+    except Exception as e:
+        logger.error(f"Query failed: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"An unexpected error occurred during query: {str(e)}",
+        )
+
 @app.get("/debug_all_conversations")
 async def debug_all_conversations():
     """
-    Return all available conversation sessions and their first messages
+    DEBUG: Retrieve all saved conversations.
     """
     sessions_info = {}
     for session_id, interactions in rag_pipeline.conversation_memory.sessions.items():
@@ -663,9 +667,9 @@ async def index_vault_fast():
         result = await fast_indexer.index_documents_fast(indexed_documents, resume=True)
         
         if result["status"] == "success":
-                    logger.info(f"[SUCCESS] Fast indexing completed successfully!")
-        logger.info(f"[STATS] Processed {result['processed_documents']} documents in {result['elapsed_time']}")
-        logger.info(f"[PERFORMANCE] Speed: {result['documents_per_second']} docs/sec")
+            logger.info(f"[SUCCESS] Fast indexing completed successfully!")
+            logger.info(f"[STATS] Processed {result['processed_documents']} documents in {result['elapsed_time']}")
+            logger.info(f"[PERFORMANCE] Speed: {result['documents_per_second']} docs/sec")
             
             return {
                 "status": "success",

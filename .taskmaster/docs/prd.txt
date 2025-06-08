@@ -1,0 +1,172 @@
+# Overview
+This document outlines the requirements for the Hybrid Graph RAG Implementation project. The project aims to develop an advanced Retrieval Augmented Generation (RAG) system that leverages a hybrid approach, combining knowledge graph traversal with semantic vector search. This system is designed to enhance information retrieval by providing more accurate, context-aware, and explainable answers from a corpus of documents, such as an Obsidian vault. It solves the problem of traditional RAG systems that may lack deep contextual understanding or clear provenance. The primary users are developers integrating this system into applications and end-users seeking precise information from their document collections. The value lies in its ability to surface nuanced relationships and provide traceable sources for generated answers.
+
+# Core Features
+The system comprises the following core features:
+
+1.  **Graph Builder Core:**
+    -   *What it does:* Parses documents (markdown, text) to construct a weighted directed graph where nodes represent documents/entities and edges represent relationships (e.g., backlinks, tags).
+    -   *Why it's important:* Forms the structural backbone for contextual retrieval, capturing explicit relationships within the document set.
+    -   *How it works:* Uses libraries like `networkx` to parse content, extract metadata (tags, frontmatter, timestamps), identify links, and build a graph structure.
+
+2.  **Graph Retriever:**
+    -   *What it does:* Traverses the constructed graph to find documents relevant to a query or starting node.
+    -   *Why it's important:* Enables discovery of contextually related information based on graph proximity and relationship types.
+    -   *How it works:* Implements k-hop neighborhood expansion, path-based discovery, and tag/cluster traversal with configurable parameters.
+
+3.  **Context Formatter:**
+    -   *What it does:* Converts retrieved graph relationships and document snippets into a structured, LLM-friendly text format.
+    -   *Why it's important:* Provides the LLM with clear, relational context, improving the quality and relevance of generated answers.
+    -   *How it works:* Uses templates to describe connections between nodes (e.g., "Document A links to Document B via 'backlink'").
+
+4.  **Vector Similarity Capability:**
+    -   *What it does:* Integrates vector embedding generation (e.g., OpenAI models, `all-MiniLM-L6-v2`) and similarity search (e.g., FAISS, Qdrant).
+    -   *Why it's important:* Adds semantic search capabilities to find documents similar in meaning, complementing graph-based structural retrieval.
+    -   *How it works:* Generates embeddings for document content, stores them in a vector database, and performs similarity searches.
+
+5.  **Hybrid Retriever:**
+    -   *What it does:* Combines results from graph traversal and vector similarity search, re-ranking candidates.
+    -   *Why it's important:* Achieves a balance between structural and semantic relevance for more robust retrieval.
+    -   *How it works:* Merges candidate sets from both methods using a tunable scoring function that weights graph and vector scores.
+
+6.  **RAG Pipeline Integration:**
+    -   *What it does:* Provides a unified interface for the end-to-end RAG process: query processing, hybrid retrieval, context formatting, LLM interaction, and answer generation.
+    -   *Why it's important:* Orchestrates all components into a cohesive system for easy use.
+    -   *How it works:* A central class coordinates calls to the retriever, formatter, and LLM, returning answers with provenance.
+
+7.  **Recency Bias and Weight Tuning:**
+    -   *What it does:* Allows for time-based weighting of documents and configurable weights for different edge types in graph retrieval.
+    -   *Why it's important:* Enables prioritization of more recent information and fine-tuning of relationship importance.
+    -   *How it works:* Modifies graph traversal scoring to incorporate document timestamps and custom edge weights.
+
+8.  **Enhance Vault Retrieval with Source File Metadata:**
+    -   *What it does:* Modifies the retrieval system to include source file information (file path, name, modification dates, etc.) in query results.
+    -   *Why it's important:* Provides users with clear document provenance and traceability.
+    -   *How it works:* Extracts metadata during ingestion, stores it with document chunks/embeddings, and includes it in the RAG pipeline's response.
+
+9.  **Evaluation Framework (Future Enhancement):**
+    -   *What it does:* A system to measure retrieval quality (MRR, precision@k, recall@k) and tune parameters.
+    -   *Why it's important:* Enables systematic optimization of the retrieval system.
+    -   *How it works:* Runs test queries against a ground truth dataset, calculates metrics, and compares configurations.
+
+10. **Basic Visualization Layer (Future Enhancement):**
+    -   *What it does:* A simple component to display the graph context used for a query.
+    -   *Why it's important:* Makes the retrieval process transparent and explainable.
+    -   *How it works:* Integrates with libraries like D3.js or Cytoscape to render the relevant subgraph.
+
+11. **Documentation and Usage Examples (Future Enhancement):**
+    -   *What it does:* Comprehensive API references, configuration guides, and usage examples.
+    -   *Why it's important:* Facilitates adoption and integration by developers.
+    -   *How it works:* Markdown documentation, Jupyter notebooks, and sample code.
+
+12. **Embedding Generation Optimization (Ongoing):**
+    -   *What it does:* Continuously improve the performance and efficiency of the document embedding process.
+    -   *Why it's important:* Reduces indexing time, critical for large vaults.
+    -   *How it works:* Profiling, batching, parallelization, model optimization, I/O improvements. (Significant progress made, reducing indexing from 8+ hours to ~30 seconds).
+
+# User Experience
+-   **User Personas:**
+    -   *Developer:* Integrates the Hybrid Graph RAG system into applications (e.g., custom knowledge bases, search tools). Needs clear APIs, good documentation, and configurable components.
+    -   *End-User (e.g., Obsidian User):* Interacts with an application powered by this RAG system to ask questions and retrieve information from their document vault. Expects accurate answers with clear sources.
+-   **Key User Flows:**
+    1.  *Document Ingestion & Indexing:* Developer (or automated process) feeds documents into the system. The system parses documents, builds/updates the graph, and generates/stores embeddings and metadata.
+    2.  *Querying:* End-user submits a natural language query.
+    3.  *Retrieval & Augmentation:* The RAG pipeline uses hybrid retrieval to find relevant context, formats it, and sends it to an LLM.
+    4.  *Answer Generation:* The LLM generates an answer based on the provided context.
+    5.  *Response Presentation:* The system returns the answer to the user, including source file metadata for provenance.
+-   **UI/UX Considerations:**
+    -   Primarily an API-driven system for developers.
+    -   The future visualization layer will offer a graphical interface for exploring context.
+    -   Responses should be structured (JSON) for easy parsing by client applications.
+    -   Error messages should be clear and informative.
+
+# Technical Architecture
+-   **System Components:**
+    -   *Document Loaders:* (e.g., `ObsidianLoaderV2`) for ingesting various file formats.
+    -   *Graph Module:* (`networkx`-based) for graph construction and traversal.
+    -   *Vector Store:* (e.g., FAISS, Qdrant) for storing and searching document embeddings.
+    -   *Embedding Model Interface:* For generating embeddings (e.g., OpenAI API, local Sentence Transformers).
+    -   *Hybrid Retrieval Logic:* Combines graph and vector search results.
+    -   *Context Formatting Engine:* Prepares context for the LLM.
+    -   *LLM Integration Client:* Interacts with an LLM (e.g., Anthropic Claude models).
+    -   *API Layer:* (e.g., FastAPI) to expose system functionality.
+    -   *Configuration Management:* For system parameters (e.g., model names, weights, paths).
+-   **Data Models:**
+    -   *Graph Data:* Nodes (document ID, title, snippet, metadata), Edges (type, weight, direction).
+    -   *Vector Data:* Embeddings, associated document IDs, source file metadata (path, name, timestamps, size, etc.).
+    -   *Task Data:* `tasks.json` structure for project management.
+-   **APIs and Integrations:**
+    -   Internal APIs between components.
+    -   External API for LLM interaction (e.g., Anthropic API).
+    -   RESTful API for client applications to interact with the RAG system (e.g., `/query`, `/index`).
+-   **Infrastructure Requirements:**
+    -   Python runtime environment.
+    -   Sufficient CPU, RAM for graph operations and embedding generation.
+    -   GPU (recommended) for faster local embedding model inference.
+    -   Disk space for storing the graph, vector index, and source documents.
+
+# Development Roadmap
+-   **MVP (Largely Completed):**
+    1.  Graph Builder Core (Task 1)
+    2.  Graph Retriever (Task 2)
+    3.  Context Formatter (Task 3)
+    4.  Vector Similarity Capability (Task 4)
+    5.  Hybrid Retriever (Task 5)
+    6.  RAG Pipeline Integration (Task 6)
+    7.  Recency Bias and Weight Tuning (Task 7)
+    8.  Initial High-Performance Embedding Optimization (Subtasks of Task 11, resulting in ~30s indexing)
+-   **Current/Next Phase Enhancements:**
+    1.  Enhance Vault Retrieval with Source File Metadata (Task 12 and its subtasks) - *In Progress/Planned*
+    2.  Complete Embedding Optimization Documentation & Finalization (Remaining subtasks of Task 11)
+    3.  Create Evaluation Framework (Task 8)
+    4.  Build Basic Visualization Layer (Task 9)
+    5.  Complete Documentation and Usage Examples (Task 10)
+-   **Future Considerations:**
+    -   Advanced graph algorithms (community detection, centrality).
+    -   Support for more document types.
+    -   Real-time indexing capabilities.
+    -   Multi-user support and access control.
+
+# Logical Dependency Chain
+The development follows the dependencies outlined in the `tasks.json` file. Key principles:
+1.  **Core Retrieval First:** Establish robust graph and vector retrieval mechanisms (Tasks 1-5).
+2.  **Pipeline Integration:** Unify components into a working RAG pipeline (Task 6).
+3.  **Refinements & Enhancements:** Add features like recency bias, metadata, and performance optimizations (Tasks 7, 11, 12).
+4.  **Supporting Tools & Polish:** Develop evaluation, visualization, and comprehensive documentation (Tasks 8, 9, 10).
+5.  **Iterative Improvement:** Each feature builds upon previous ones, allowing for incremental development and testing. The goal is to have a usable (even if basic) end-to-end system as early as possible, then enhance its parts.
+
+# Risks and Mitigations
+-   **Technical Challenges:**
+    -   *Risk:* Balancing graph traversal depth with performance.
+        -   *Mitigation:* Implement configurable traversal parameters, caching, and optimized graph algorithms.
+    -   *Risk:* Maintaining high embedding quality across diverse document types.
+        -   *Mitigation:* Use robust embedding models, implement thorough preprocessing, and allow model selection.
+    -   *Risk:* LLM hallucination or irrelevant answers despite augmented context.
+        -   *Mitigation:* Refine context formatting, experiment with prompting strategies, and implement clear provenance for user verification.
+-   **Figuring out the MVP that we can build upon:**
+    -   *Risk:* MVP scope creep.
+        -   *Mitigation:* Strictly adhered to core RAG functionality for the initial MVP (Tasks 1-7), deferring advanced features. This has been successfully managed.
+-   **Resource Constraints:**
+    -   *Risk:* Cost of using proprietary LLM APIs and embedding services.
+        -   *Mitigation:* Implement support for local/open-source models, optimize API calls, and provide clear cost implications to users/developers.
+    -   *Risk:* Compute resources for local embedding and graph processing.
+        -   *Mitigation:* Optimize algorithms (as done with Task 11), provide guidance on hardware requirements, and explore cloud deployment options if scaling is needed.
+
+# Appendix
+-   **Key Libraries/Technologies (Current/Planned):**
+    -   Python 3.x
+    -   NetworkX (Graph operations)
+    -   FAISS / Qdrant (Vector storage and search)
+    -   Sentence Transformers / OpenAI API (Embeddings)
+    -   Anthropic API (LLM for generation)
+    -   FastAPI (API layer)
+    -   Pydantic (Data validation)
+    -   Task Master AI (Project management)
+-   **Research Findings:**
+    -   Hybrid retrieval (graph + vector) generally outperforms single-method approaches for complex information needs.
+    -   Context formatting is crucial for LLM performance in RAG systems.
+    -   Significant performance gains in embedding generation are achievable through careful optimization of batching, concurrency, and I/O (as demonstrated by Task 11).
+-   **Technical Specifications:**
+    -   Refer to individual task details in `tasks.json` and task markdown files for specific implementation requirements.
+    -   API endpoints will follow RESTful principles.
+    -   Configuration will be managed via `.env` files and potentially a settings module. 

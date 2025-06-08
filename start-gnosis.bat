@@ -57,5 +57,4 @@ echo.
 echo TIP: Use start-gnosis.ps1 for automatic URL detection and clipboard copy!
 echo.
 echo The system is running in separate windows. To stop everything, close those windows.
-echo.
-pause 
+echo. 
