@@ -672,7 +672,7 @@ async def query_vault(
 
         # Call the RAG pipeline
         result = rag_pipeline.query(
-            question=q,
+            query=q,
             session_id=session_id,
             tags=tags,
             date_range=date_range,
