@@ -1,13 +1,11 @@
-from typing import List, Dict, Any, Optional, Tuple, Set, Union
+from typing import List, Dict, Any, Optional
 import networkx as nx
 from pathlib import Path
-import json
 import logging
 from datetime import datetime
 import re
-import yaml
 import numpy as np
-from collections import defaultdict
+
 
 class EnhancedGraphRetriever:
     """
@@ -16,17 +14,18 @@ class EnhancedGraphRetriever:
     sophisticated graph traversal strategies, hybrid retrieval, and
     structured context output for LLMs.
     """
-    
+
     def __init__(
-        self, 
+        self,
         vault_path: str,
         config: Optional[Dict[str, Any]] = None
     ):
         """Initialize the enhanced graph retriever"""
         self.vault_path = Path(vault_path)
-        self.graph = nx.DiGraph()  # Use directed graph to distinguish between links and backlinks
+        # Use directed graph to distinguish between links and backlinks
+        self.graph = nx.DiGraph()
         self.logger = logging.getLogger(__name__)
-        
+
         # Default configuration
         self.config = {
             "entry_points": {
@@ -37,7 +36,7 @@ class EnhancedGraphRetriever:
             },
             "traversal": {
                 "max_hops": 2,
-                "max_documents": 15,
+                "max_documents": 10,
                 "tag_expansion_enabled": True,
                 "path_expansion_enabled": True,
                 "min_similarity": 0.5
@@ -49,20 +48,20 @@ class EnhancedGraphRetriever:
                 "recency_bonus": 0.1
             }
         }
-        
+
         # Update with user configuration if provided
         if config:
             self._update_config(config)
-            
+
         # Cache for document content and metadata
         self.document_cache = {}
-            
+
     def _update_config(self, config: Dict[str, Any]) -> None:
         """Update the configuration with user-provided values"""
         for section, section_config in config.items():
             if section in self.config:
                 self.config[section].update(section_config)
-                
+
     def build_graph(self) -> None:
         """
         Build an enhanced graph from the Obsidian vault's markdown files.
@@ -72,9 +71,10 @@ class EnhancedGraphRetriever:
             # Load all markdown files
             markdown_files = list(self.vault_path.rglob("*.md"))
             self.logger.info(f"Found {len(markdown_files)} markdown files")
-            
-            # Map to normalize filenames to handle case sensitivity and extension variations
-            # This will map both lowercase filename and filename without extension to the actual path
+
+            # Map to normalize filenames for case sensitivity and extensions
+            # This will map both lowercase filename and filename without
+            # extension to the actual path
             filename_map = {}
             for file_path in markdown_files:
                 relative_path = str(file_path.relative_to(self.vault_path))
@@ -82,21 +82,22 @@ class EnhancedGraphRetriever:
                 stem = file_path.stem.lower()
                 filename_map[filename] = relative_path
                 filename_map[stem] = relative_path
-            
+
             # First pass: add nodes and extract links/tags
             for file_path in markdown_files:
                 relative_path = str(file_path.relative_to(self.vault_path))
-                
+
                 # Read file content
                 with open(file_path, 'r', encoding='utf-8') as f:
                     content = f.read()
-                
+
                 # Extract metadata
-                metadata = self._extract_metadata(content, relative_path, file_path)
-                
+                metadata = self._extract_metadata(
+                    content, relative_path, file_path)
+
                 # Add node with metadata
                 self.graph.add_node(
-                    relative_path, 
+                    relative_path,
                     type="document",
                     title=metadata.get("title", relative_path),
                     created=metadata.get("created"),
@@ -104,16 +105,16 @@ class EnhancedGraphRetriever:
                     tags=metadata.get("tags", []),
                     frontmatter=metadata.get("frontmatter", {}),
                 )
-                
+
                 # Cache document content and metadata
                 self.document_cache[relative_path] = {
                     "content": content,
                     "metadata": metadata
                 }
-                
+
                 # Use deduplicated links from metadata
                 raw_links = metadata.get("links", [])
-                # Normalize links to handle relative paths, case sensitivity, etc.
+                # Normalize links for relative paths, case sensitivity, etc.
                 normalized_links = []
                 for link in raw_links:
                     # Try to find the actual file path for this link
@@ -124,26 +125,28 @@ class EnhancedGraphRetriever:
                         link_lower + ".md",
                         link_lower.replace(".md", "")
                     ]
-                    
+
                     matched_link = None
                     for candidate in link_candidates:
                         if candidate in filename_map:
                             matched_link = filename_map[candidate]
                             break
-                    
+
                     if matched_link:
                         normalized_links.append(matched_link)
-                
+
                 metadata["links"] = normalized_links
-                
+
                 # Add tag nodes and connections
                 for tag in metadata.get("tags", []):
                     tag_node = f"tag:{tag}"
                     if not self.graph.has_node(tag_node):
                         self.graph.add_node(tag_node, type="tag")
-                    self.graph.add_edge(relative_path, tag_node, type="has_tag")
-                    self.graph.add_edge(tag_node, relative_path, type="tagged_document")
-            
+                    self.graph.add_edge(
+                        relative_path, tag_node, type="has_tag")
+                    self.graph.add_edge(
+                        tag_node, relative_path, type="tagged_document")
+
             # Second pass: add link edges and backlinks
             for doc_path, data in self.document_cache.items():
                 metadata = data["metadata"]
@@ -151,58 +154,65 @@ class EnhancedGraphRetriever:
                     # Add link edge
                     if self.graph.has_node(link):  # Only add if target exists
                         self.graph.add_edge(doc_path, link, type="links_to")
-                        self.graph.add_edge(link, doc_path, type="linked_from")
-            
-            self.logger.info(f"Built enhanced graph with {self.graph.number_of_nodes()} nodes and {self.graph.number_of_edges()} edges")
-            
+                        self.graph.add_edge(
+                            link, doc_path, type="linked_from")
+
+            self.logger.info(
+                "Built enhanced graph with %s nodes and %s edges",
+                self.graph.number_of_nodes(), self.graph.number_of_edges()
+            )
+
         except Exception as e:
             self.logger.error(f"Failed to build enhanced graph: {str(e)}")
             raise
-    
-    def _extract_metadata(self, content: str, relative_path: str, file_path: Path) -> Dict[str, Any]:
+
+    def _extract_metadata(
+        self, content: str, relative_path: str, file_path: Path
+    ) -> Dict[str, Any]:
         """Extract essential metadata from a document"""
         # Extract frontmatter
         frontmatter = self._extract_frontmatter(content)
-        
+
         # Extract title (from frontmatter or filename)
         title = frontmatter.get("title", file_path.stem)
-        
+
         # Extract tags from frontmatter and content
         tags_from_frontmatter = frontmatter.get("tags", [])
         if isinstance(tags_from_frontmatter, str):
             tags_from_frontmatter = [tags_from_frontmatter]
-        
+
         # Deduplicate frontmatter tags
-        frontmatter_tags_set = set(t.strip() for t in tags_from_frontmatter)
-        
+        frontmatter_tags_set = set(
+            t.strip() for t in tags_from_frontmatter)
+
         # Extract tags from content and deduplicate
         tags_from_content = self._extract_tags(content)
         content_tags_set = set(t.strip() for t in tags_from_content)
-        
+
         # Combine all tags
         all_tags_raw = list(frontmatter_tags_set.union(content_tags_set))
-        
+
         # Deduplicate tags case-insensitively
         tags_lower_dict = {}
         for tag in all_tags_raw:
             tag_lower = tag.lower()
-            # If we already have this tag in a different case, prefer the frontmatter version
-            # or the first one we encountered
+            # If we already have this tag in a different case, prefer the
+            # frontmatter version or the first one we encountered
             if tag_lower not in tags_lower_dict:
                 tags_lower_dict[tag_lower] = tag
-                
+
         # Convert back to a list of unique tags
         all_tags = list(tags_lower_dict.values())
-        
+
         # Extract links and deduplicate
         raw_links = set(self._extract_links(content))  # Use set to deduplicate
-        
+
         # Deduplicate - ensure links don't duplicate tags
         deduped_links = []
         for link in raw_links:
             if link.lower() not in tags_lower_dict:
                 deduped_links.append(link)
-        
+
         # Get timestamps only if recency-based features are enabled
         created = None
         modified = None
@@ -210,24 +220,26 @@ class EnhancedGraphRetriever:
             created = frontmatter.get("created")
             if not created:
                 try:
-                    created = datetime.fromtimestamp(file_path.stat().st_ctime)
-                except:
+                    created = datetime.fromtimestamp(
+                        file_path.stat().st_ctime)
+                except (OSError, ValueError):
                     created = None
-                    
+
             modified = frontmatter.get("modified")
             if not modified:
                 try:
-                    modified = datetime.fromtimestamp(file_path.stat().st_mtime)
-                except:
+                    modified = datetime.fromtimestamp(
+                        file_path.stat().st_mtime)
+                except (OSError, ValueError):
                     modified = None
-        
-        # Extract only essential frontmatter fields rather than storing the whole object
+
+        # Extract only essential frontmatter fields
         essential_frontmatter = {}
         for key in frontmatter:
             # Skip fields we already have dedicated metadata for
             if key not in ['title', 'tags', 'created', 'modified']:
                 essential_frontmatter[key] = frontmatter[key]
-        
+
         return {
             "title": title,
             "tags": all_tags,
@@ -237,9 +249,10 @@ class EnhancedGraphRetriever:
             **({"created": created} if created else {}),
             **({"modified": modified} if modified else {}),
             # Only include essential frontmatter fields
-            **({"frontmatter": essential_frontmatter} if essential_frontmatter else {})
+            **({"frontmatter": essential_frontmatter}
+               if essential_frontmatter else {})
         }
-            
+
     def _extract_links(self, content: str) -> List[str]:
         """Extract Obsidian-style links from content"""
         # Match [[link]] or [[link|alias]] and extract just the link part
@@ -251,7 +264,8 @@ class EnhancedGraphRetriever:
         for link in matches:
             link_stripped = link.strip()
             link_lower = link_stripped.lower()
-            # If we already have this link in a different case, prefer the first one we encountered
+            # If we already have this link in a different case, prefer the
+            # first one we encountered
             if link_lower not in links_lower_dict:
                 links_lower_dict[link_lower] = link_stripped
                 
@@ -276,7 +290,8 @@ class EnhancedGraphRetriever:
         for tag in raw_tags:
             tag_stripped = tag.strip()
             tag_lower = tag_stripped.lower()
-            # If we already have this tag in a different case, prefer the first one we encountered
+            # If we already have this tag in a different case, prefer the
+            # first one we encountered
             if tag_lower not in tags_lower_dict:
                 tags_lower_dict[tag_lower] = tag_stripped
                 
@@ -287,16 +302,19 @@ class EnhancedGraphRetriever:
         """Extract YAML frontmatter from content"""
         pattern = r'^---\n(.*?)\n---\n'
         match = re.match(pattern, content, re.DOTALL)
-        
+
         if match:
             try:
+                # We need to import yaml here to avoid circular dependencies
+                # with other modules that might use this retriever.
+                import yaml
                 return yaml.safe_load(match.group(1))
-            except:
+            except yaml.YAMLError:
                 return {}
         return {}
     
     def find_entry_points(
-        self, 
+        self,
         query: str,
         vector_results: Optional[List[Dict[str, Any]]] = None,
         top_k: int = 3
@@ -307,65 +325,66 @@ class EnhancedGraphRetriever:
         
         Args:
             query: The user query
-            vector_results: Optional vector search results to use as entry points
+            vector_results: Optional vector search results to use as entry
+                points
             top_k: Number of entry points to return
             
         Returns:
             List of entry point documents with metadata
         """
-        entry_points = []
+        entry_points = {}
         
         # Use vector results if provided
-        if vector_results and self.config["entry_points"]["vector_entry_count"] > 0:
-            for result in vector_results[:self.config["entry_points"]["vector_entry_count"]]:
+        vector_count = self.config["entry_points"]["vector_entry_count"]
+        if vector_results and vector_count > 0:
+            for result in vector_results[:vector_count]:
                 doc_id = result.get("id") or result.get("document")
                 if doc_id and self.graph.has_node(doc_id):
-                    entry_points.append({
+                    entry_points[doc_id] = {
                         "document": doc_id,
-                        "similarity": result.get("score", 0.8),  # Default if not provided
-                        "entry_type": "vector",
-                        "weight": self.config["entry_points"]["entry_weight_vector"]
-                    })
+                        # Default if not provided
+                        "similarity": result.get("score", 0.8),
+                        "source": "vector"
+                    }
         
         # Use tag/keyword matching if enabled
         if self.config["entry_points"]["tag_entry_enabled"]:
-            # Extract potential tags from query
-            potential_tags = self._extract_tags(query)
-            
-            # Find documents with matching tags
-            for tag in potential_tags:
+            # Find tags in the query
+            query_tags = self._extract_tags(query)
+            # Find documents with these tags
+            for tag in query_tags:
                 tag_node = f"tag:{tag}"
                 if self.graph.has_node(tag_node):
-                    # Get documents with this tag
-                    for edge_data in self.graph.in_edges(tag_node, data=True):
-                        # Correctly unpack - NetworkX returns (source, target, data_dict)
-                        doc_node, _, edge_attrs = edge_data
-                        if edge_attrs.get("type") == "has_tag" and self.graph.nodes[doc_node]["type"] == "document":
-                            entry_points.append({
-                                "document": doc_node,
-                                "similarity": 0.9,  # High similarity for exact tag matches
-                                "entry_type": "tag",
-                                "tag": tag,
-                                "weight": self.config["entry_points"]["entry_weight_tags"]
-                            })
-            
-            # TODO: Add keyword matching for title/content
-            
-        # Deduplicate and sort by weighted similarity
-        unique_entries = {}
-        for entry in entry_points:
-            doc = entry["document"]
-            if doc not in unique_entries or entry["similarity"] * entry["weight"] > unique_entries[doc]["similarity"] * unique_entries[doc]["weight"]:
-                unique_entries[doc] = entry
+                    # Get documents connected to this tag
+                    for doc_id in self.graph.successors(tag_node):
+                        if doc_id not in entry_points:
+                            entry_points[doc_id] = {
+                                "document": doc_id,
+                                "similarity": 1.0,  # Direct tag match
+                                "source": "tag"
+                            }
         
-        # Convert to list and sort
+        # If no entry points found, you might want a fallback strategy
+        if not entry_points:
+            self.logger.warning("No entry points found for query: %s", query)
+            return []
+
+        # Sort entry points by similarity and take top_k
         sorted_entries = sorted(
-            unique_entries.values(), 
-            key=lambda x: x["similarity"] * x["weight"], 
-            reverse=True
+            entry_points.values(), key=lambda x: x["similarity"], reverse=True
         )
-        
-        return sorted_entries[:top_k]
+        # Apply weights to different entry sources
+        weighted_entries = []
+        for entry in sorted_entries:
+            weight = 1.0
+            if entry["source"] == "vector":
+                weight = self.config["entry_points"]["entry_weight_vector"]
+            elif entry["source"] == "tag":
+                weight = self.config["entry_points"]["entry_weight_tags"]
+            entry["weight"] = weight
+            weighted_entries.append(entry)
+
+        return weighted_entries[:top_k]
     
     def expand_graph(
         self, 
@@ -406,14 +425,16 @@ class EnhancedGraphRetriever:
                 }
             
             # Get k-hop neighborhood
-            self._expand_neighborhood(doc_id, entry_score, 1, max_hops, discovered_docs)
+            self._expand_neighborhood(
+                doc_id, entry_score, 1, max_hops, discovered_docs)
         
         # 2. Tag/Cluster Expansion (if enabled)
         if self.config["traversal"]["tag_expansion_enabled"]:
             self._expand_by_tags(discovered_docs, entry_doc_ids)
             
         # 3. Path-based Expansion (if enabled and multiple entry points)
-        if self.config["traversal"]["path_expansion_enabled"] and len(entry_points) > 1:
+        path_enabled = self.config["traversal"]["path_expansion_enabled"]
+        if path_enabled and len(entry_points) > 1:
             self._expand_by_paths(discovered_docs, entry_doc_ids)
             
         # Convert to list and sort by score
@@ -445,9 +466,13 @@ class EnhancedGraphRetriever:
         visited.add(doc_id)
             
         # Get outgoing links - NetworkX returns (source, target, data_dict)
-        for source, target, edge_attrs in self.graph.out_edges(doc_id, data=True):
+        for source, target, edge_attrs in self.graph.out_edges(
+            doc_id, data=True
+        ):
             # Skip tag nodes unless tag expansion is explicitly enabled
-            if self.graph.nodes[target].get("type") == "tag" and not self.config["traversal"]["tag_expansion_enabled"]:
+            tag_expansion = self.config["traversal"]["tag_expansion_enabled"]
+            if (self.graph.nodes[target].get("type") == "tag" and
+                    not tag_expansion):
                 continue
                 
             # Calculate score based on distance and connection type
@@ -459,7 +484,8 @@ class EnhancedGraphRetriever:
             elif edge_attrs.get("type") == "linked_from":
                 connection_score *= 0.8  # Backlink (slightly lower weight)
             elif edge_attrs.get("type") == "has_tag":
-                connection_score *= 0.7  # Tag connection (slightly lower than backlink)
+                # Tag connection (slightly lower than backlink)
+                connection_score *= 0.7
                 # Skip further processing for tag nodes
                 continue
             else:
@@ -467,7 +493,8 @@ class EnhancedGraphRetriever:
                 
             # Add or update discovered document
             if target not in discovered_docs:
-                # Check that target is a document node (not a tag or other type)
+                # Check that target is a document node (not a tag or other
+                # type)
                 if self.graph.nodes[target].get("type") != "document":
                     continue
                     
@@ -487,7 +514,10 @@ class EnhancedGraphRetriever:
                 # Update score if higher
                 if connection_score > discovered_docs[target]["score"]:
                     discovered_docs[target]["score"] = connection_score
-                    discovered_docs[target]["distance"] = min(current_distance, discovered_docs[target]["distance"])
+                    current_dist = current_distance
+                    prev_dist = discovered_docs[target]["distance"]
+                    discovered_docs[target]["distance"] = min(
+                        current_dist, prev_dist)
                 
                 # Add connection if from a different source
                 connection = {
@@ -497,12 +527,18 @@ class EnhancedGraphRetriever:
                 }
                 
                 # Check if this specific connection already exists
-                if not any(c["from"] == connection["from"] and c["type"] == connection["type"] 
-                          for c in discovered_docs[target]["connections"]):
+                existing_connections = discovered_docs[target]["connections"]
+                connection_exists = any(
+                    c["from"] == connection["from"] and
+                    c["type"] == connection["type"]
+                    for c in existing_connections)
+                if not connection_exists:
                     discovered_docs[target]["connections"].append(connection)
                 
             # Continue expanding from this node
-            self._expand_neighborhood(target, connection_score, current_distance + 1, max_distance, discovered_docs, visited)
+            self._expand_neighborhood(
+                target, connection_score, current_distance + 1,
+                max_distance, discovered_docs, visited)
     
     def _expand_by_tags(
         self, 
@@ -523,12 +559,15 @@ class EnhancedGraphRetriever:
                 
             # Find documents with this tag
             for edge_data in self.graph.in_edges(tag_node, data=True):
-                # Correctly unpack - NetworkX returns (source, target, data_dict)
+                # Correctly unpack - NetworkX returns (source, target,
+                # data_dict)
                 doc_node, _, edge_attrs = edge_data
                 
-                if (edge_attrs.get("type") == "has_tag" and 
+                if (
+                    edge_attrs.get("type") == "has_tag" and
                     self.graph.nodes[doc_node]["type"] == "document" and
-                    doc_node not in discovered_docs):
+                    doc_node not in discovered_docs
+                ):
                     
                     # Calculate score based on tag importance
                     # (Tags from entry points get higher scores)
@@ -536,7 +575,9 @@ class EnhancedGraphRetriever:
                     
                     # Boost score if it's an entry point tag
                     for entry_id in entry_doc_ids:
-                        if entry_id in discovered_docs and tag in discovered_docs[entry_id].get("tags", []):
+                        entry_in_discovered = entry_id in discovered_docs
+                        entry_tags = discovered_docs[entry_id].get("tags", [])
+                        if entry_in_discovered and tag in entry_tags:
                             tag_score = 0.7
                             break
                     
@@ -544,7 +585,8 @@ class EnhancedGraphRetriever:
                     discovered_docs[doc_node] = {
                         "document": doc_node,
                         "score": tag_score,
-                        "distance": 1,  # Consider tag connections as distance 1
+                        # Consider tag connections as distance 1
+                        "distance": 1,
                         "entry_point": False,
                         "connections": [{
                             "from": "tag:" + tag,
@@ -569,12 +611,15 @@ class EnhancedGraphRetriever:
                     path = nx.shortest_path(self.graph, source, target)
                     
                     # Add intermediate nodes to discovered docs
-                    for j, node in enumerate(path[1:-1], 1):  # Skip source and target
+                    # Skip source and target
+                    for j, node in enumerate(path[1:-1], 1):
                         if self.graph.nodes[node].get("type") != "document":
                             continue
                             
-                        path_position = j / len(path)  # Relative position in path
-                        path_score = 0.6 * (1 - path_position)  # Higher score for nodes closer to start
+                        # Relative position in path
+                        path_position = j / len(path)
+                        # Higher score for nodes closer to start
+                        path_score = 0.6 * (1 - path_position)
                         
                         if node not in discovered_docs:
                             discovered_docs[node] = {
@@ -613,7 +658,7 @@ class EnhancedGraphRetriever:
         documents: List[Dict[str, Any]],
         query: str,
         query_embedding: Optional[np.ndarray] = None,
-        embedding_function = None
+        embedding_function=None
     ) -> List[Dict[str, Any]]:
         """
         Hybrid reranking of graph search results with vector similarity
@@ -673,7 +718,8 @@ class EnhancedGraphRetriever:
             # Combine graph score with vector similarity
             doc_id = doc["document"]
             graph_score = doc["score"]
-            vector_score = vector_similarities[i] if i < len(vector_similarities) else 0
+            vector_score = (vector_similarities[i]
+                            if i < len(vector_similarities) else 0)
             
             # Add recency bonus if available
             recency_score = 0
@@ -704,7 +750,7 @@ class EnhancedGraphRetriever:
         self,
         query: str,
         vector_results: Optional[List[Dict[str, Any]]] = None,
-        embedding_function = None,
+        embedding_function=None,
         max_results: int = 10
     ) -> Dict[str, Any]:
         """
@@ -712,8 +758,10 @@ class EnhancedGraphRetriever:
         
         Args:
             query: User query
-            vector_results: Optional vector search results to use as entry points
-            embedding_function: Function to compute embeddings (for hybrid reranking)
+            vector_results: Optional vector search results to use as entry
+                points
+            embedding_function: Function to compute embeddings (for hybrid
+                reranking)
             max_results: Maximum number of results to return
             
         Returns:
@@ -757,17 +805,21 @@ class EnhancedGraphRetriever:
                 
                 # Add content if available
                 if doc_id in self.document_cache:
-                    doc_data["content"] = self.document_cache[doc_id]["content"]
-                    doc_data["metadata"] = self.document_cache[doc_id]["metadata"]
+                    cache_data = self.document_cache[doc_id]
+                    doc_data["content"] = cache_data["content"]
+                    doc_data["metadata"] = cache_data["metadata"]
                 else:
                     # Try to read the file
                     try:
-                        with open(self.vault_path / doc_id, 'r', encoding='utf-8') as f:
+                        with open(
+                            self.vault_path / doc_id, 'r', encoding='utf-8'
+                        ) as f:
                             content = f.read()
                             doc_data["content"] = content
                             # Extract basic metadata
-                            doc_data["metadata"] = self._extract_metadata(content, doc_id, self.vault_path / doc_id)
-                    except:
+                            doc_data["metadata"] = self._extract_metadata(
+                                content, doc_id, self.vault_path / doc_id)
+                    except IOError:
                         doc_data["content"] = ""
                         doc_data["metadata"] = {}
                 
@@ -788,7 +840,8 @@ class EnhancedGraphRetriever:
     
     def format_context_for_llm(self, query_result: Dict[str, Any]) -> str:
         """
-        Format the query results into a concise, information-rich context string for the LLM
+        Format the query results into a concise, information-rich context
+        string for the LLM
         
         Args:
             query_result: Result from the query method
@@ -812,20 +865,24 @@ class EnhancedGraphRetriever:
         # Add each document with essential metadata only
         for i, doc in enumerate(results, 1):
             # Document header with only critical metadata
-            doc_header = f"[{i}] Document: \"{doc['metadata'].get('title', doc['id'])}\""
+            title = doc['metadata'].get('title', doc['id'])
+            doc_header = f'[{i}] Document: "{title}"'
             
             # Add tags if present and not empty
             if doc.get("tags") and len(doc["tags"]) > 0:
-                tag_str = ", ".join(doc["tags"][:3])  # Limit to 3 tags for brevity
+                # Limit to 3 tags for brevity
+                tag_str = ", ".join(doc["tags"][:3])
                 doc_header += f" (Tags: {tag_str})"
                 
             # Only include connection info if it adds valuable context
             if not doc["entry_point"] and doc["connections"]:
                 conn = doc["connections"][0]  # Use the first connection
                 if conn["type"] == "links_to":
-                    doc_header += f" (Linked from: {get_title(conn['from'])})"
+                    from_title = get_title(conn['from'])
+                    doc_header += f" (Linked from: {from_title})"
                 elif conn["type"] == "linked_from":
-                    doc_header += f" (Links to: {get_title(conn['from'])})"
+                    from_title = get_title(conn['from'])
+                    doc_header += f" (Links to: {from_title})"
             
             # Add document content
             context_parts.append(doc_header)
@@ -847,12 +904,15 @@ class EnhancedGraphRetriever:
                 doc2_id = doc2["id"]
                 
                 # Only add if there's a direct link
-                if self.graph.has_edge(doc1_id, doc2_id) or self.graph.has_edge(doc2_id, doc1_id):
+                has_edge_1_to_2 = self.graph.has_edge(doc1_id, doc2_id)
+                has_edge_2_to_1 = self.graph.has_edge(doc2_id, doc1_id)
+                if has_edge_1_to_2 or has_edge_2_to_1:
                     connection_key = f"{doc1_id}-{doc2_id}-link"
                     if connection_key not in added_connections:
-                        direction = "→" if self.graph.has_edge(doc1_id, doc2_id) else "←"
+                        direction = "→" if has_edge_1_to_2 else "←"
                         context_parts.append(
-                            f"[Connection] Document {i+1} {direction} Document {j+1}"
+                            f"[Connection] Document {i+1} {direction} "
+                            f"Document {j+1}"
                         )
                         added_connections.add(connection_key)
                         direct_links_found = True
@@ -870,14 +930,20 @@ class EnhancedGraphRetriever:
                     common_tags = doc1_tags.intersection(doc2_tags)
                     
                     if common_tags:
-                        # Only add up to 3 tag connections total and only if they share important tags
+                        # Only add up to 3 tag connections total and only if
+                        # they share important tags
                         connection_key = f"{doc1['id']}-{doc2['id']}-tags"
-                        if len(added_connections) < 3 and connection_key not in added_connections:
+                        connection_count = len(added_connections)
+                        if (connection_count < 3 and
+                                connection_key not in added_connections):
                             # Sort by tag name to get consistent results
                             tag_list = sorted(list(common_tags))
-                            tag_str = ", ".join(f'"{tag}"' for tag in tag_list[:2])  # Show at most 2 tags
+                            # Show at most 2 tags
+                            tag_str = ", ".join(
+                                f'"{tag}"' for tag in tag_list[:2])
                             context_parts.append(
-                                f"[Connection] Documents {i+1} and {j+1} share tags: {tag_str}"
+                                f"[Connection] Documents {i+1} and {j+1} "
+                                f"share tags: {tag_str}"
                             )
                             added_connections.add(connection_key)
         

@@ -116,7 +116,7 @@ class GraphRAGIntegration:
     def enhanced_query(
         self,
         query: str,
-        k: int = 5,
+        k: int = 10,
         session_id: Optional[str] = None,
         conversation_memory = None,
         tags: Optional[List[str]] = None,
