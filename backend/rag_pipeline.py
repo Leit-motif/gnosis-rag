@@ -1124,17 +1124,31 @@ Be specific about what information comes from which source files.""",
                 )
 
                 # Calculate how many tokens we have available for the context
-                # Reserve 1000 tokens for the response as per the max_tokens parameter
-                # Add 100 tokens as buffer
-                max_total_tokens = 8192  # OpenAI's context limit
+                # Get model configuration
+                chat_model_config = self.config.get("chat_model", {})
+                model_name = chat_model_config.get("name", "gpt-4o-mini")
+                max_response_tokens = chat_model_config.get("max_response_tokens", 4000)
+                
+                # Get context limit from config or auto-detect based on model
+                max_total_tokens = chat_model_config.get("max_context_tokens")
+                if not max_total_tokens:
+                    # Auto-detect based on model if not configured
+                    if "gpt-4o" in model_name:
+                        max_total_tokens = 128000  # GPT-4o context limit
+                    elif "gpt-4" in model_name and "turbo" in model_name:
+                        max_total_tokens = 128000  # GPT-4 Turbo context limit  
+                    else:
+                        max_total_tokens = 16384   # Default for other models
+                
+                # Reserve tokens for response and add buffer
                 available_context_tokens = (
                     max_total_tokens
                     - system_tokens
                     - conv_context_tokens
                     - query_tokens
                     - final_instruction_tokens
-                    - 1000
-                    - 100
+                    - max_response_tokens  # Use configured response token limit
+                    - 1000  # Buffer for safety
                 )
 
                 # Count tokens in the context
@@ -1223,20 +1237,24 @@ Be specific about what information comes from which source files.""",
 
             # Generate response
             try:
+                # Get configuration values with proper defaults
+                chat_model_config = self.config.get("chat_model", {})
+                model_name = chat_model_config.get("name", "gpt-4o-mini")
+                temperature = chat_model_config.get("temperature", 0.7)
+                max_response_tokens = chat_model_config.get("max_response_tokens", 4000)
+                
+                self.logger.info(f"Generating response with model: {model_name}, max_tokens: {max_response_tokens}")
+                
                 response = self.client.chat.completions.create(
-                    model=self.config.get("chat_model", {}).get(
-                        "name", "gpt-4-turbo-preview"
-                    ),
+                    model=model_name,
                     messages=messages,
-                    temperature=0.7,
-                    max_tokens=1000,
+                    temperature=temperature,
+                    max_tokens=max_response_tokens,
                 )
             except Exception as api_error:
                 self.logger.error(f"OpenAI API error: {str(api_error)}")
                 # Log the exact request that failed for debugging
-                self.logger.error(
-                    f"Failed request model: {self.config.get('chat_model', {}).get('name', 'gpt-4-turbo-preview')}"
-                )
+                self.logger.error(f"Failed request model: {model_name}")
                 self.logger.error(f"Failed request messages count: {len(messages)}")
                 for i, msg in enumerate(messages):
                     self.logger.error(
@@ -1282,14 +1300,20 @@ Be specific about what information comes from which source files.""",
 
     def _generate_response(self, query: str, results: List[Dict[str, Any]]) -> str:
         """
-        Generate a natural language response using GPT-4
+        Generate a natural language response using the configured model
         """
         context = "\n".join(
             [f"Source {i+1}: {result['excerpt']}" for i, result in enumerate(results)]
         )
 
+        # Get configuration values
+        chat_model_config = self.config.get("chat_model", {})
+        model_name = chat_model_config.get("name", "gpt-4o-mini")
+        temperature = chat_model_config.get("temperature", 0.7)
+        max_response_tokens = chat_model_config.get("max_response_tokens", 4000)
+
         response = self.client.chat.completions.create(
-            model="gpt-4-turbo-preview",
+            model=model_name,
             messages=[
                 {
                     "role": "system",
@@ -1300,6 +1324,8 @@ Be specific about what information comes from which source files.""",
                     "content": f"Question: {query}\n\nRelevant sources:\n{context}",
                 },
             ],
+            temperature=temperature,
+            max_tokens=max_response_tokens,
         )
 
         return response.choices[0].message.content

@@ -25,11 +25,18 @@ chunking:
   chunk_overlap: 50
   split_by: "paragraph"  # or "sentence"
 
+# Retrieval Configuration
+retrieval:
+  k: 15  # Number of documents to retrieve for comprehensive responses
+  max_graph_distance: 2  # Maximum graph traversal distance
+
 # OpenAI Chat Model Configuration
 chat_model:
-  name: gpt-4o-mini
+  name: gpt-4o                     # For higher quality responses
+  # name: gpt-4o-mini             # For cost efficiency
   temperature: 0.7
-  max_response_tokens: 128000
+  max_response_tokens: 16384       # GPT-4o max response tokens
+  max_context_tokens: 128000       # Total context window (auto-detected if not set)
   system_prompt: ${OPENAI_SYSTEM_PROMPT}
 
 # API Configuration
