@@ -43,7 +43,7 @@ def full_reindex():
         
         # Load documents from vault
         logger.info("📚 Loading documents from vault...")
-        documents = vault_loader.load_vault(config)
+        documents = vault_loader.load_all_documents(config=config)
         logger.info(f"Found {len(documents)} documents to index")
         
         if not documents:

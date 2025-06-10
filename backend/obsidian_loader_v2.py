@@ -199,7 +199,9 @@ class ObsidianLoaderV2:
             return []
 
     def load_vault(
-        self, last_indexed_state: Optional[Dict[str, float]] = None
+        self,
+        last_indexed_state: Optional[Dict[str, float]] = None,
+        config: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         Loads documents from the Obsidian vault, detecting changes since the

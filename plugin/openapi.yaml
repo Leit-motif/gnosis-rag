@@ -1,34 +1,83 @@
-openapi: 3.0.1
+openapi: 3.1.0
 info:
-  title: Gnosis RAG Plugin
-  description: A plugin for indexing, saving conversations, and querying an Obsidian vault using RAG (Retrieval-Augmented Generation)
-  version: 'v1'
+  title: Gnosis RAG API
+  description: API for querying and analyzing Obsidian vaults using hybrid RAG
+  version: "1.0.1"
 servers:
-  - url: http://localhost:8000
+  - url: https://deliver-taxes-moses-compiler.trycloudflare.com
+    description: Cloudflare Tunnel URL
 paths:
-  /index:
-    post:
-      operationId: indexDocuments
-      summary: Index documents in the Obsidian vault
-      description: Index all documents in the Obsidian vault for improved search and retrieval
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                force:
-                  type: boolean
-                  description: Force re-indexing of all documents
-                  default: false
-                batch_size:
-                  type: integer
-                  description: Number of documents to process in each batch
-                  default: 50
+  /health:
+    get:
+      summary: Health Check
+      description: Provides a comprehensive health check of the API and RAG pipeline.
+      operationId: health_check_health_get
       responses:
         "200":
-          description: Indexing completed successfully
+          description: The service is healthy and ready to accept requests.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  message:
+                    type: string
+                    example: RAG pipeline is healthy.
+        "503":
+          description: The service is not ready.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
+                    example: "Service Unavailable: Index and document store are out of sync. Please re-index the vault."
+  /sync:
+    post:
+      summary: Sync Vault
+      description: Performs an incremental sync of the Obsidian vault, updating the index with only the changes since the last sync.
+      operationId: sync_vault_sync_post
+      responses:
+        "200":
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  message:
+                    type: string
+                    example: Vault synchronized successfully.
+                  added:
+                    type: integer
+                    example: 5
+                  updated:
+                    type: integer
+                    example: 2
+                  deleted:
+                    type: integer
+                    example: 1
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+  /index:
+    post:
+      summary: Index Vault
+      description: Index the Obsidian vault content into the vector store. This must be called before querying.
+      operationId: index_vault_index_post
+      responses:
+        "200":
+          description: Successful Response
           content:
             application/json:
               schema:
@@ -38,54 +87,32 @@ paths:
                     type: string
                   message:
                     type: string
-                  documents_indexed:
+                  document_count:
                     type: integer
+                  total_documents:
+                    type: integer
+                  success_rate:
+                    type: string
         "500":
-          description: Internal server error
+          description: Internal Server Error
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  detail:
-                    type: string
-
+                $ref: "#/components/schemas/ErrorDetail"
   /save:
     post:
-      operationId: saveContent
-      summary: Save conversation or content to Obsidian vault
-      description: Save conversation messages or raw content to the current day's page in the Obsidian vault
+      summary: Save Content
+      description: Save a conversation or exact content to the daily note in the Obsidian vault.
+      operationId: save_content_save_post
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              type: object
-              required:
-                - conversation_name
-              properties:
-                conversation_name:
-                  type: string
-                  description: Name/title for the saved content
-                session_id:
-                  type: string
-                  description: Session ID for conversation-based saving (optional)
-                messages:
-                  type: array
-                  description: Direct messages to save (optional)
-                  items:
-                    type: object
-                    properties:
-                      role:
-                        type: string
-                      content:
-                        type: string
-                content:
-                  type: string
-                  description: Raw content to save directly (optional)
+              $ref: "#/components/schemas/SaveRequest"
       responses:
         "200":
-          description: Content saved successfully
+          description: Successful Response
           content:
             application/json:
               schema:
@@ -97,88 +124,152 @@ paths:
                     type: string
                   file_path:
                     type: string
-        "400":
-          description: Bad request
+        "422":
+          description: Validation Error
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  detail:
-                    type: string
+                $ref: "#/components/schemas/HTTPValidationError"
         "500":
-          description: Internal server error
+          description: Internal Server Error
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  detail:
-                    type: string
-
+                $ref: "#/components/schemas/ErrorDetail"
   /query:
     get:
-      operationId: queryVault
-      summary: Query the Obsidian vault
-      description: Search and retrieve relevant information from the indexed Obsidian vault using RAG
+      summary: Query Vault
+      description: Query the Obsidian vault using hybrid search with optional filters.
+      operationId: query_vault_query_get
       parameters:
-        - in: query
-          name: q
-          schema:
-            type: string
+        - name: q
+          in: query
           required: true
-          description: The search query
-        - in: query
-          name: session_id
           schema:
             type: string
+          description: The search query.
+        - name: session_id
+          in: query
           required: false
+          schema:
+            type: string
           description: The session ID to maintain conversation context.
-        - in: query
-          name: tags
+        - name: tags
+          in: query
+          required: false
+          style: form
+          explode: true
           schema:
             type: array
             items:
               type: string
-          required: false
           description: A list of tags to filter the search.
-        - in: query
-          name: date_range
+        - name: date_range
+          in: query
+          required: false
           schema:
             type: string
-          required: false
-          description: A date range to filter the search (e.g., 'today', 'last_7_days', '2023-01-01:2023-01-31').
+          description: "Date range to filter (e.g., 'today', 'last_7_days', '2023-01-01:2023-01-31')."
       responses:
         "200":
-          description: Query results
+          description: Successful Response
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  query:
-                    type: string
-                  answer:
-                    type: string
-                  sources:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        content:
-                          type: string
-                        metadata:
-                          type: object
-                        score:
-                          type: number
-                  total_results:
-                    type: integer
-        "500":
-          description: Internal server error
+                $ref: "#/components/schemas/QueryResponse"
+        "422":
+          description: Validation Error
           content:
             application/json:
               schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+        "503":
+          description: Service Unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+components:
+  schemas:
+    SaveRequest:
+      title: SaveRequest
+      required:
+        - conversation_name
+      type: object
+      properties:
+        conversation_name:
+          type: string
+          title: Conversation Name
+        session_id:
+          type: string
+          title: Session ID
+        messages:
+          type: array
+          items:
+            type: object
+            properties:
+              role:
+                type: string
+              content:
+                type: string
+          title: Messages
+        content:
+          type: string
+          title: Content
+    QueryResponse:
+      title: QueryResponse
+      type: object
+      properties:
+        query:
+          type: string
+        answer:
+          type: string
+        sources:
+          type: array
+          items:
+            type: object
+            properties:
+              content:
+                type: string
+              metadata:
                 type: object
-                properties:
-                  detail:
-                    type: string 
+              score:
+                type: number
+        total_results:
+          type: integer
+    ErrorDetail:
+      title: ErrorDetail
+      type: object
+      properties:
+        detail:
+          type: string
+    ValidationError:
+      title: ValidationError
+      required:
+        - loc
+        - msg
+        - type
+      type: object
+      properties:
+        loc:
+          type: array
+          items:
+            anyOf:
+              - type: string
+              - type: integer
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+    HTTPValidationError:
+      title: HTTPValidationError
+      type: object
+      properties:
+        detail:
+          type: array
+          items:
+            $ref: "#/components/schemas/ValidationError"
+          title: Detail 

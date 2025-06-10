@@ -195,7 +195,7 @@ async def index_vault():
         logger.info("Starting robust vault indexing...")
 
         # Step 1: Load documents from vault
-        documents = vault_loader.load_all_documents(config)
+        documents = vault_loader.load_all_documents(config=config)
         logger.info(f"Loaded {len(documents)} documents from vault")
 
         if not documents:

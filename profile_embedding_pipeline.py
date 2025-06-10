@@ -156,7 +156,7 @@ class EmbeddingPipelineProfiler:
             start_time = time.time()
             
             # Load documents with monitoring
-            documents = vault_loader.load_vault(self.config)
+            documents = vault_loader.load_all_documents(config=self.config)
             
             # Limit documents for profiling
             if len(documents) > max_docs:
