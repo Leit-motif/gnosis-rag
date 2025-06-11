@@ -21,11 +21,13 @@ from tqdm import tqdm
 from fastapi import HTTPException
 
 # This must be before the local application imports to ensure correct module resolution
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(
+    os.path.dirname(os.path.abspath(__file__))
+)
 
 from conversation_memory import ConversationMemory  # noqa: E402
-from graph_retriever import GraphRetriever  # noqa: E402
-from obsidian_loader_v2 import ObsidianLoaderV2, ObsidianDocument  # noqa: E402
+from enhanced_graph_retriever import EnhancedGraphRetriever  # noqa: E402
+from obsidian_loader_v2 import ObsidianLoaderV2  # noqa: E402
 
 
 def sanitize_for_json(text: str) -> str:
@@ -50,7 +52,9 @@ def sanitize_for_json(text: str) -> str:
     sanitized = text.translate(control_chars)
 
     # Only do expensive character validation if we suspect issues
-    if any(ord(c) < 32 and c not in "\n\t\r" for c in sanitized[:100]):  # Sample check
+    if any(
+        ord(c) < 32 and c not in "\n\t\r" for c in sanitized[:100]
+    ):  # Sample check
         # Remove control characters except newlines, tabs, and carriage returns
         sanitized = "".join(
             char
@@ -85,18 +89,20 @@ class RAGPipeline:
 
         if embedding_provider == "local":
             # For local embeddings, use LOCAL_MODEL env var or config model
-            local_model = os.environ.get("LOCAL_MODEL") or embedding_config.get(
-                "model", "all-MiniLM-L6-v2"
-            )
+            local_model = os.environ.get(
+                "LOCAL_MODEL"
+            ) or embedding_config.get("model", "all-MiniLM-L6-v2")
 
-            # Force faster model for speed optimization
             if "mpnet" in local_model:
                 self.logger.warning(
-                    f"Switching from {local_model} to all-MiniLM-L6-v2 for better speed"
+                    f"Switching from {local_model} to all-MiniLM-L6-v2 for "
+                    "better speed"
                 )
                 local_model = "all-MiniLM-L6-v2"
 
-            self.logger.info(f"Initializing local embedding model: {local_model}")
+            self.logger.info(
+                f"Initializing local embedding model: {local_model}"
+            )
             self.sentence_transformer = SentenceTransformer(local_model)
             self.embed = self._embed_local
 
@@ -112,26 +118,34 @@ class RAGPipeline:
             )
         else:
             # Initialize OpenAI embeddings
-            embedding_model = os.environ.get("EMBEDDING_MODEL") or embedding_config.get(
-                "model", "text-embedding-ada-002"
+            embedding_model = os.environ.get(
+                "EMBEDDING_MODEL"
+            ) or embedding_config.get("model", "text-embedding-ada-002")
+            self.logger.info(
+                f"Initializing OpenAI embedding model: {embedding_model}"
             )
-            self.logger.info(f"Initializing OpenAI embedding model: {embedding_model}")
             api_key = os.environ.get("OPENAI_API_KEY")
             if not api_key:
-                raise ValueError("OPENAI_API_KEY environment variable is not set")
+                raise ValueError(
+                    "OPENAI_API_KEY environment variable is required for chat "
+                    "completions"
+                )
             self.client = OpenAI(api_key=api_key)
             self.embed = self._embed_openai
             self.dimension = 1536  # OpenAI dimension
             self.batch_size = 500  # Smaller batch for API
 
-        # Initialize OpenAI client for chat completions (always needed regardless of embedding provider)
+        # Initialize OpenAI client for chat completions (always needed regardless of
+        # embedding provider)
         chat_api_key = os.environ.get("OPENAI_API_KEY")
         if not chat_api_key:
             raise ValueError(
-                "OPENAI_API_KEY environment variable is required for chat completions"
+                "OPENAI_API_KEY environment variable is required for chat "
+                "completions"
             )
 
-        # If we haven't already initialized the client for embeddings, initialize it now for chat
+        # If we haven't already initialized the client for embeddings, initialize
+        # it now for chat
         if not hasattr(self, "client"):
             self.client = OpenAI(api_key=chat_api_key)
 
@@ -164,14 +178,19 @@ class RAGPipeline:
             # is_ready remains False
 
         # Initialize graph retriever (ALWAYS RUN THIS)
-        self.graph_retriever = GraphRetriever(config["vault"]["path"])
+        self.graph_retriever = EnhancedGraphRetriever(
+            config["vault"]["path"],
+            config.get("graph_retriever", {})
+        )
         self.graph_retriever.build_graph()
         self.logger.info("Graph retriever initialized")
 
         # Initialize conversation memory (ALWAYS RUN THIS)
         memory_config = config.get("conversation_memory", {})
         self.conversation_memory = ConversationMemory(
-            storage_dir=memory_config.get("storage_dir", "data/conversations"),
+            storage_dir=memory_config.get(
+                "storage_dir", "data/conversations"
+            ),
             max_history=memory_config.get("max_history", 10),
             context_window=memory_config.get("context_window", 5),
         )
@@ -201,7 +220,9 @@ class RAGPipeline:
         temp_path = path.with_suffix(f"{path.suffix}.tmp")
         try:
             with open(temp_path, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=2, cls=CustomJSONEncoder)
+                json.dump(
+                    data, f, ensure_ascii=False, indent=2, cls=CustomJSONEncoder
+                )
             os.replace(temp_path, path)
             self.logger.info(f"Successfully saved JSON to {path}")
         except Exception as e:
@@ -245,10 +266,12 @@ class RAGPipeline:
 
                 if self.index.ntotal != len(self.document_store):
                     raise ValueError(
-                        "Index and document store are out of sync. " "Please re-index."
+                        "Index and document store are out of sync. "
+                        "Please re-index."
                     )
                 self.logger.info(
-                    f"Successfully loaded index with {self.index.ntotal} vectors."
+                    "Successfully loaded index with "
+                    f"{self.index.ntotal} vectors."
                 )
                 self._populate_missing_dates_from_paths()
                 return
@@ -266,7 +289,9 @@ class RAGPipeline:
         """Initializes an empty FAISS index."""
         try:
             # Ensure there's a valid dimension in the config
-            dimension = self.config.get("vector_store", {}).get("dimension", 1536)
+            dimension = self.config.get(
+                "vector_store", {}
+            ).get("dimension", 1536)
             index_path = self.config.get("vector_store", {}).get(
                 "index_path", "data/vector_store/faiss.index"
             )
@@ -285,11 +310,17 @@ class RAGPipeline:
                 test_file.touch()
                 test_file.unlink()
             except Exception as e:
-                self.logger.error(f"Directory {index_dir} is not writable: {str(e)}")
-                raise ValueError(f"Directory {index_dir} is not writable: {str(e)}")
+                self.logger.error(
+                    f"Directory {index_dir} is not writable: {str(e)}"
+                )
+                raise ValueError(
+                    f"Directory {index_dir} is not writable: {str(e)}"
+                )
 
             # Create a new index first
-            self.logger.info(f"Creating new FAISS index with dimension {dimension}")
+            self.logger.info(
+                f"Creating new FAISS index with dimension {dimension}"
+            )
             self.index = faiss.IndexFlatL2(self.dimension)
             self.logger.info(
                 f"Initialized new FAISS index with dimension {self.dimension}"
@@ -298,7 +329,8 @@ class RAGPipeline:
             if index_path.exists():
                 try:
                     self.logger.info(
-                        f"Found existing index at {index_path}, attempting to load..."
+                        f"Found existing index at {index_path}, attempting to "
+                        "load..."
                     )
                     loaded_index = faiss.read_index(str(index_path))
                     return loaded_index
@@ -311,14 +343,17 @@ class RAGPipeline:
         except Exception as e:
             self.logger.error(f"Error initializing FAISS index: {e}", exc_info=True)
             # Create an in-memory index as fallback with default dimension
-            self.logger.info("Creating in-memory index as fallback with dimension 1536")
+            self.logger.info(
+                "Creating in-memory index as fallback with dimension 1536"
+            )
             return faiss.IndexFlatL2(1536)  # Default OpenAI embedding dimension
 
     def _embed_local(self, texts: List[str]) -> np.ndarray:
         """Get embeddings using local sentence-transformers model - optimized for speed"""
         try:
             self.logger.info(
-                f"Generating embeddings for {len(texts)} texts using local model (batch processing)"
+                f"Generating embeddings for {len(texts)} texts using local "
+                "model (batch processing)"
             )
 
             # Process all texts at once for maximum speed

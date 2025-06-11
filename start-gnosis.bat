@@ -1,4 +1,9 @@
 @echo off
+echo Closing existing Gnosis RAG windows...
+taskkill /F /FI "WINDOWTITLE eq Gnosis FastAPI Server" /T > nul 2>&1
+taskkill /F /FI "WINDOWTITLE eq Cloudflare Tunnel" /T > nul 2>&1
+echo.
+
 echo Starting Gnosis RAG system...
 echo.
 echo NOTE: For automatic tunnel URL capture and clipboard copy,

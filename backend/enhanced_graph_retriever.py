@@ -254,8 +254,8 @@ class EnhancedGraphRetriever:
         }
 
     def _extract_links(self, content: str) -> List[str]:
-        """Extract Obsidian-style links from content"""
-        # Match [[link]] or [[link|alias]] and extract just the link part
+        """Extract Obsidian-style [[wiki-links]] from content"""
+        # This pattern handles both standard and aliased links
         pattern = r'\[\[([^\]\|]+)(?:\|[^\]]+)?\]\]'
         matches = re.findall(pattern, content)
         
@@ -701,9 +701,12 @@ class EnhancedGraphRetriever:
             vector_similarities = []
             for doc_emb in doc_embeddings:
                 # Cosine similarity
-                similarity = np.dot(query_embedding, doc_emb) / (
-                    np.linalg.norm(query_embedding) * np.linalg.norm(doc_emb)
-                )
+                numerator = np.dot(query_embedding, doc_emb)
+                denominator = (np.linalg.norm(query_embedding) * np.linalg.norm(doc_emb))
+                if denominator == 0:
+                    similarity = 0.0
+                else:
+                    similarity = numerator / denominator
                 vector_similarities.append(float(similarity))
         else:
             # Default to 0 vector similarity if no embedding function
@@ -729,7 +732,7 @@ class EnhancedGraphRetriever:
                 if modified and isinstance(modified, datetime):
                     # Calculate days since modification (max 30 days)
                     days_old = min(30, (datetime.now() - modified).days)
-                    recency_score = recency_bonus * (1 - days_old/30)
+                    recency_score = recency_bonus * (1 - days_old / 30)
             
             # Calculate combined score
             combined_score = (
@@ -947,4 +950,57 @@ class EnhancedGraphRetriever:
                             )
                             added_connections.add(connection_key)
         
-        return "\n\n".join(context_parts) 
+        return "\n\n".join(context_parts)
+
+    def get_related_documents(
+        self,
+        source_doc: str,
+        max_distance: int = 2,
+        min_similarity: float = 0.5,
+        max_results: int = 10
+    ) -> List[Dict[str, Any]]:
+        """
+        Compatibility method to mimic the old GraphRetriever's functionality.
+        Finds related documents by performing a limited graph expansion.
+        """
+        if source_doc not in self.graph:
+            self.logger.warning(
+                f"Source document {source_doc} not in graph for compatibility search"
+            )
+            return []
+
+        # Use the graph expansion logic as a stand-in for finding related docs
+        entry_points = [{
+            "document": source_doc,
+            "similarity": 1.0,
+            "weight": 1.0
+        }]
+        
+        # Override max_hops for this specific call if needed
+        original_max_hops = self.config["traversal"]["max_hops"]
+        self.config["traversal"]["max_hops"] = max_distance
+        
+        expansion_results = self.expand_graph(entry_points)
+        
+        # Restore original max_hops
+        self.config["traversal"]["max_hops"] = original_max_hops
+        
+        # Format results to match the old retriever's output format
+        related_docs = []
+        for doc in expansion_results:
+            # Simple similarity based on presence (can be improved)
+            similarity = doc.get("score", min_similarity)
+
+            if similarity >= min_similarity:
+                related_docs.append(
+                    {
+                        "document": doc["document"],
+                        "similarity": similarity,
+                        # Approximate distance, not directly available in new method
+                        "distance": doc.get("distance", max_distance),
+                    }
+                )
+
+        # Sort by similarity and limit results
+        related_docs.sort(key=lambda x: x["similarity"], reverse=True)
+        return related_docs[:max_results] 

@@ -670,9 +670,16 @@ async def query_vault(
             f"tags={tags}, date_range='{date_range}'"
         )
 
+        # Get retrieval configuration
+        retrieval_config = config.get("retrieval", {})
+        k = retrieval_config.get("k", 5)  # Default to 5 if not configured
+        
+        logger.info(f"Using k={k} for document retrieval")
+
         # Call the RAG pipeline
         result = rag_pipeline.query(
             query=q,
+            k=k,
             session_id=session_id,
             tags=tags,
             date_range=date_range,
