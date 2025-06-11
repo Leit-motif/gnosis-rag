@@ -605,7 +605,7 @@ class EnhancedGraphRetriever:
         """Find paths between entry points and add intermediate nodes"""
         # Find paths between all pairs of entry points
         for i, source in enumerate(entry_doc_ids):
-            for target in entry_doc_ids[i+1:]:
+            for target in entry_doc_ids[i + 1:]:
                 try:
                     # Find shortest path between source and target
                     path = nx.shortest_path(self.graph, source, target)
@@ -628,8 +628,8 @@ class EnhancedGraphRetriever:
                                 "distance": j,
                                 "entry_point": False,
                                 "connections": [{
-                                    "from": path[j-1],
-                                    "to": path[j+1],
+                                    "from": path[j - 1],
+                                    "to": path[j + 1],
                                     "type": "path",
                                     "path": f"{source} → ... → {target}",
                                     "distance": j
@@ -643,8 +643,8 @@ class EnhancedGraphRetriever:
                             
                             # Add path connection
                             discovered_docs[node]["connections"].append({
-                                "from": path[j-1],
-                                "to": path[j+1],
+                                "from": path[j - 1],
+                                "to": path[j + 1],
                                 "type": "path",
                                 "path": f"{source} → ... → {target}",
                                 "distance": j
@@ -1003,4 +1003,90 @@ class EnhancedGraphRetriever:
 
         # Sort by similarity and limit results
         related_docs.sort(key=lambda x: x["similarity"], reverse=True)
-        return related_docs[:max_results] 
+        return related_docs[:max_results]
+
+    def generate_memory_summary(self, query_result: Dict[str, Any], max_brief_docs: int = 12, excerpt_words: int = 180) -> str:
+        """Generate a blended digest + extended context summary suitable for a
+        "second-brain" vault note.
+
+        The output has two major sections:
+        1. A BRIEF DIGEST – theme-grouped bullet list of top documents.
+        2. An EXTENDED CONTEXT – truncated excerpts of each document.
+
+        Args:
+            query_result: Result object returned by ``self.query``.
+            max_brief_docs: How many top-ranked docs to include in the brief
+                digest (and in the extended section).
+            excerpt_words: Approximate number of words to keep per document in
+                the extended section.
+
+        Returns:
+            A formatted markdown string ready to be written into a vault note.
+        """
+        results = query_result.get("results", [])
+        if not results:
+            return "No relevant documents found."  # Early exit
+
+        # Limit to top N results for the summary.
+        top_results = results[:max_brief_docs]
+
+        # -----------------------
+        # Helper functions
+        # -----------------------
+        def _first_tag(doc: Dict[str, Any]) -> str:
+            tags = doc.get("tags", [])
+            return tags[0] if tags else "Miscellaneous"
+
+        def _format_date(dt_obj: Any) -> str:
+            if isinstance(dt_obj, datetime):
+                return dt_obj.strftime("%Y-%m-%d")
+            return ""
+
+        def _get_excerpt(content: str) -> str:
+            # Simple whitespace split – fast and dependency-free
+            words = re.split(r"\s+", content.strip())
+            excerpt = " ".join(words[:excerpt_words]).strip()
+            if len(words) > excerpt_words:
+                excerpt += " …"
+            return excerpt
+
+        # -----------------------
+        # Build BRIEF DIGEST
+        # -----------------------
+        themes: Dict[str, List[str]] = {}
+        for doc in top_results:
+            theme = _first_tag(doc)
+            themes.setdefault(theme, []).append(doc)
+
+        digest_lines: List[str] = ["–––––", "BRIEF DIGEST", "–––––", ""]
+        for theme, docs in themes.items():
+            digest_lines.append(f"{theme}")
+            for doc in docs:
+                meta = doc.get("metadata", {})
+                title = meta.get("title", doc["id"])
+                modified = meta.get("modified")
+                date_str = _format_date(modified)
+                tag_str = ", ".join(doc.get("tags", [])[:3])
+                line = f'• {date_str}\t"{title}" – Tags: {tag_str}'
+                digest_lines.append(line)
+            digest_lines.append("")  # Blank line between themes
+
+        # -----------------------
+        # Build EXTENDED CONTEXT
+        # -----------------------
+        extended_lines: List[str] = ["–––––", "EXTENDED CONTEXT (trimmed excerpts)", "–––––", ""]
+        for idx, doc in enumerate(top_results, 1):
+            meta = doc.get("metadata", {})
+            title = meta.get("title", doc["id"])
+            tag_list = doc.get("tags", [])
+            tag_str = ", ".join(tag_list[:3])
+            header = f'[{idx}] Document: "{title}"'
+            if tag_list:
+                header += f" (Tags: {tag_str})"
+            content_excerpt = _get_excerpt(doc.get("content", ""))
+            extended_lines.append(header)
+            extended_lines.append(f"Content: {content_excerpt}\n")
+
+        # Combine sections
+        summary = "\n".join(digest_lines + extended_lines)
+        return summary 
