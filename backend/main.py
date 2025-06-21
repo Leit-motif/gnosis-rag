@@ -292,6 +292,33 @@ async def index_vault():
         raise HTTPException(status_code=500, detail=detail)
 
 
+def convert_sources_format(text: str) -> str:
+    """Convert source references from '(YYYY-MM-DD)' to '[[YYYY-MM-DD]]'.
+    Only lines containing 'Sources:' (case-insensitive) are affected to avoid
+    unintended substitutions.
+    """
+    # Match quoted or bare dates not already inside [[ ]]
+    date_pattern = re.compile(r'(?<!\[\[)"?(\d{4}-\d{2}-\d{2})"?')
+
+    def _date_repl(match):
+        return f"[[{match.group(1)}]]"
+
+    processed_lines = []
+    for line in text.splitlines():
+        # Replace all date occurrences with wiki-links
+        line = date_pattern.sub(_date_repl, line)
+
+        # Clean up common wrappers like (source: ...)
+        if re.search(r"(?i)source:", line):
+            # Remove leading "(source:" or "( source:" etc.
+            line = re.sub(r"\(\s*source:\s*", "source: ", line, flags=re.IGNORECASE)
+            # Remove trailing closing parenthesis if present
+            line = re.sub(r"\)\s*", "", line)
+        processed_lines.append(line)
+
+    return "\n".join(processed_lines)
+
+
 @app.post("/save")
 async def save_content(request: SaveRequest):
     """
@@ -322,7 +349,7 @@ async def save_content(request: SaveRequest):
             conversation_content.append(
                 f"_Saved on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}_\n"
             )
-            conversation_content.append(request.content)
+            conversation_content.append(convert_sources_format(request.content))
         # Handle direct messages (second priority)
         elif request.messages is not None and len(request.messages) > 0:
             logger.info(f"Using provided messages directly instead of session lookup")
@@ -351,7 +378,8 @@ async def save_content(request: SaveRequest):
                     conversation_content.append("")  # Add blank line between speakers
                 elif message.get("role") == "assistant":
                     # Assistant message processing
-                    assistant_lines = message.get("content", "").split("\n")
+                    assistant_content = convert_sources_format(message.get("content", ""))
+                    assistant_lines = assistant_content.split("\n")
                     first_assistant_line = assistant_lines[0] if assistant_lines else ""
                     conversation_content.append(
                         f"> **Assistant ({i//2+1}):** {first_assistant_line}"
@@ -466,7 +494,8 @@ async def save_content(request: SaveRequest):
                 conversation_content.append("")  # Add blank line between speakers
 
                 # Assistant message - combine first line with the assistant label
-                assistant_lines = interaction["assistant_message"].split("\n")
+                assistant_content = convert_sources_format(interaction["assistant_message"])
+                assistant_lines = assistant_content.split("\n")
                 first_assistant_line = assistant_lines[0] if assistant_lines else ""
                 conversation_content.append(
                     f"> **Assistant ({i+1}):** {first_assistant_line}"
