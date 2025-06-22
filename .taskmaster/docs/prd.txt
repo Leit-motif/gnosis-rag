@@ -169,4 +169,89 @@ The development follows the dependencies outlined in the `tasks.json` file. Key 
 -   **Technical Specifications:**
     -   Refer to individual task details in `tasks.json` and task markdown files for specific implementation requirements.
     -   API endpoints will follow RESTful principles.
-    -   Configuration will be managed via `.env` files and potentially a settings module. 
+    -   Configuration will be managed via `.env` files and potentially a settings module.
+
+# Addendum: Lean Containerized API Rewrite (v1.0)
+
+## 1. Problem Statement
+The current implementation is Windows-coupled, over-engineered, and unreliable on container hosts. Frequent tunnel restarts and platform-specific scripts impede continuous availability. We need a lean, host-agnostic service to power a ChatGPT / Custom-GPT plugin that answers questions over an Obsidian-style vault.
+
+## 2. Goals
+* **Container-portable** – a build-once Docker image that runs unmodified on Render, Fly.io, Railway, or local Docker.
+* **Plugin-ready** – serve `/.well-known/ai-plugin.json` and `openapi.yaml` over HTTPS.
+* **Graph-aware retrieval** – preserve the superior context relevance of the existing `EnhancedGraphRetriever` + hybrid rerank.
+* **Ultra-simple API** – only two JSON endpoints:
+    * `POST /upload` – ingest markdown / PDF.
+    * `POST /chat`  – query with conversational memory (last 10 turns).
+* **Low footprint** – ≤ 256 MB RAM, ≤ 30 s cold-start, p95 latency ≤ 250 ms for 2 k-token prompts.
+* **Stateless runtime** – embeddings persist in pgvector (Supabase Free) or OpenAI Files. No local disk reliance at runtime.
+
+## 3. Scope Mapping
+| Keep from v0 | Rationale |
+|--------------|-----------|
+| `EnhancedGraphRetriever` (graph build, k-hop, tag/path expansion) | Distinctive advantage; Linux-neutral. |
+| Hybrid rerank (graph + embedding + recency) | Proven relevance boost. |
+| `format_context_for_llm` | Produces concise, relation-aware prompts. |
+| Memory summary generator | Valuable for vault write-backs; feature-flagged. |
+
+| Rewrite / Drop | Reason |
+|----------------|--------|
+| PowerShell launcher, cloudflared tunnel | Platform-specific; obsolete under managed HTTPS. |
+| Redundant endpoints (`/query_and_summarize`, `/related`) | Collapse into `/chat` with query-type switch. |
+| LangChain wrappers | Unnecessary; remove to cut dependencies and RAM. |
+
+## 4. Functional Requirements
+* **F-1** – `POST /upload` accepts files (text/markdown, application/pdf) + optional front-matter JSON; returns document IDs.
+* **F-2** – `POST /chat`  payload `{ "thread_id": str, "query": str }` → `{ "answer": str, "citations": [doc_id] }`.
+* **F-3** – If `thread_id` omitted create new context; else append to conversation memory (last 10 turns).
+* **F-4** – Embed each note once; re-embed when file modification stamp changes.
+* **F-5** – Graph traversal depth (k) + weighting factors exposed via env vars.
+* **F-6** – `GET /health` returns `{"status": "ok"}`.
+
+## 5. Non-Functional Requirements
+* Listen on `$PORT`, default **8080**.
+* Auth: none required (plugin scope) but honor bearer-token if supplied.
+* Rate-limit: 30 req/min per IP via Starlette middleware.
+* Observability: structured JSON logs (`uvicorn --access-log`).
+* Security: input hard-cap 4 MB; reject larger.
+* CI: GitHub Actions – lint, tests, Docker build, deploy to staging Render.
+
+## 6. Success Metrics
+| Metric | Target |
+|--------|--------|
+| Deploy TTFB on Render free | < 90 s |
+| Cold-start latency | < 30 s |
+| Chat p95 latency (cached) | < 250 ms |
+| MAP@10 internal queries | ≥ 0.70 |
+| Container uptime | ≥ 99 % over 30 days |
+
+## 7. High-Level Architecture
+```text
+Client (ChatGPT plugin)
+        │ HTTPS
+ Render/Fly load balancer
+        │
+   FastAPI (Docker)
+        ├── /.well-known static
+        ├── /upload                  ─┐
+        ├── /chat                    │
+        └── /health                  │
+        │                            │
+EnhancedGraphRetriever <── Postgres + pgvector
+        │                            │
+OpenAI Embeddings  ↔  Files API (fallback store)
+```
+
+## 8. Migration Plan
+1. Branch `feat/api-rewrite`; move PowerShell & tunnel scripts to `legacy/`.
+2. Generate minimal FastAPI scaffold + OpenAPI spec.
+3. Integrate graph retriever; adapt path separators and encoding.
+4. Write contract tests for `/upload` and `/chat` (pytest).
+5. Create Dockerfile, deploy to staging Render; validate success metrics.
+6. Merge to `main`, tag **v1.0**; deprecate legacy branch.
+
+## 9. Out-of-Scope
+* TUI / GUI front-end.
+* Cloudflared tunnels.
+* Windows-specific scripts.
+* Fine-tuning models. 

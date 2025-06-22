@@ -1,0 +1,59 @@
+# Version control
+.git
+.gitignore
+
+# Python cache and virtual environments
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Project specific
+data/vector_store/
+data/conversations/
+profiling_results/
+legacy/
+*.log
+*.tmp
+
+# Documentation and development files
+README.md
+docs/
+.cursor/
+.taskmaster/
+
+# Development scripts
+start-gnosis.bat
+start-gnosis.ps1
+quick_vault_recovery.bat
+profile_embedding_pipeline.py
+integrate_robust_indexing.py
+full_reindex.py
+
+# Test files
+*test*.py
+tests/
+
+# Original requirements (we use requirements-api.txt)
+requirements.txt
+setup.py 

@@ -1,0 +1,46 @@
+# Core API Framework
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+pydantic==2.5.0
+pydantic-settings==2.8.1
+
+# Database and Vector Store
+psycopg[binary]==3.1.13
+sqlalchemy[asyncio]==2.0.23
+pgvector==0.2.4
+
+# Graph and Vector Processing
+networkx==3.2.1
+numpy==1.24.4
+sentence-transformers==2.2.2
+
+# OpenAI Integration
+openai==1.3.7
+
+# HTTP Client
+httpx==0.25.2
+
+# Environment and Configuration
+python-dotenv==1.0.0
+pyyaml==6.0.1
+
+# Rate Limiting and Middleware
+slowapi==0.1.9
+redis==5.0.1
+
+# File Processing
+pypdf==3.17.1
+python-multipart==0.0.6
+
+# Logging
+structlog==23.2.0
+python-json-logger==2.0.7
+
+# Authentication and Security
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+
+# Testing
+pytest==7.4.3
+pytest-asyncio==0.21.1
+httpx==0.25.2 
