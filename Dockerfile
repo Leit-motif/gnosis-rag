@@ -18,11 +18,18 @@ RUN useradd --create-home --shell /bin/bash app
 # Set work directory
 WORKDIR /app
 
-# Copy requirements and install Python dependencies
+# Copy requirements and install Python dependencies in optimized order
 COPY requirements-api.txt .
 
 # Switch to app user before installing packages
 USER app
+
+# Install CPU-only PyTorch first for better caching
+RUN pip install --user --no-warn-script-location \
+    --extra-index-url https://download.pytorch.org/whl/cpu \
+    torch==2.1.0+cpu torchvision==0.16.0+cpu torchaudio==2.1.0+cpu
+
+# Install remaining dependencies
 RUN pip install --user --no-warn-script-location -r requirements-api.txt
 
 # Production stage
