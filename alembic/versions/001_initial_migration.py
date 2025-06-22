@@ -32,7 +32,7 @@ def upgrade() -> None:
         sa.Column('file_name', sa.String(), nullable=True),
         sa.Column('file_size', sa.Integer(), nullable=True),
         sa.Column('content_type', sa.String(), nullable=True),
-        sa.Column('metadata', sa.JSON(), nullable=True),
+        sa.Column('doc_metadata', sa.JSON(), nullable=True),
         sa.Column('created_at', sa.DateTime(), nullable=False),
         sa.Column('updated_at', sa.DateTime(), nullable=False),
         sa.PrimaryKeyConstraint('id')
@@ -76,7 +76,7 @@ def upgrade() -> None:
         sa.Column('target_id', sa.String(), nullable=False),
         sa.Column('relationship_type', sa.String(), nullable=False),
         sa.Column('weight', sa.Float(), nullable=False),
-        sa.Column('metadata', sa.JSON(), nullable=True),
+        sa.Column('doc_metadata', sa.JSON(), nullable=True),
         sa.Column('created_at', sa.DateTime(), nullable=False),
         sa.ForeignKeyConstraint(['source_id'], ['documents.id'], ondelete='CASCADE'),
         sa.ForeignKeyConstraint(['target_id'], ['documents.id'], ondelete='CASCADE'),
@@ -98,7 +98,7 @@ def upgrade() -> None:
         sa.Column('user_query', sa.Text(), nullable=False),
         sa.Column('assistant_response', sa.Text(), nullable=False),
         sa.Column('citations', sa.JSON(), nullable=True),
-        sa.Column('metadata', sa.JSON(), nullable=True),
+        sa.Column('doc_metadata', sa.JSON(), nullable=True),
         sa.Column('created_at', sa.DateTime(), nullable=False),
         sa.PrimaryKeyConstraint('id')
     )

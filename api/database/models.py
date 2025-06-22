@@ -23,7 +23,7 @@ class Document(Base):
     file_name = Column(String, nullable=True)
     file_size = Column(Integer, nullable=True)
     content_type = Column(String, nullable=True)
-    metadata = Column(JSON, nullable=True, default=dict)
+    doc_metadata = Column(JSON, nullable=True, default=dict)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     
@@ -80,7 +80,7 @@ class GraphEdge(Base):
     target_id = Column(String, ForeignKey("documents.id", ondelete="CASCADE"), nullable=False)
     relationship_type = Column(String, nullable=False, index=True)
     weight = Column(Float, nullable=False, default=1.0)
-    metadata = Column(JSON, nullable=True, default=dict)
+    doc_metadata = Column(JSON, nullable=True, default=dict)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     
     # Relationships
@@ -111,7 +111,7 @@ class Conversation(Base):
     user_query = Column(Text, nullable=False)
     assistant_response = Column(Text, nullable=False)
     citations = Column(JSON, nullable=True, default=list)
-    metadata = Column(JSON, nullable=True, default=dict)
+    doc_metadata = Column(JSON, nullable=True, default=dict)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     
     # Indexes for performance
