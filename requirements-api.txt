@@ -1,7 +1,7 @@
 # Core API Framework
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
-pydantic==2.5.0
+pydantic>=2.7.0,<3.0.0
 pydantic-settings==2.8.1
 
 # Database and Vector Store
@@ -44,5 +44,4 @@ passlib[bcrypt]==1.7.4
 # Testing
 pytest==7.4.3
 pytest-asyncio==0.21.1
-httpx==0.25.2
 requests==2.31.0 

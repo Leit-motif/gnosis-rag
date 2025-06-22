@@ -10,6 +10,8 @@ from fastapi import FastAPI, HTTPException, Depends, File, UploadFile, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
+from sqlalchemy import text
+from datetime import datetime
 
 from api.config import settings
 from api.middleware import setup_middleware, limiter, security, verify_token
@@ -114,10 +116,6 @@ class PluginManifest(BaseModel):
 @limiter.limit(f"{settings.rate_limit_requests}/minute")
 async def health_check(request: Request):
     """Health check endpoint with rate limiting."""
-    from datetime import datetime
-    
-    logger.info("Health check requested")
-    
     # Check database connectivity
     db_status = "connected" if await check_db_connection() else "disconnected"
     overall_status = "ok" if db_status == "connected" else "degraded"
@@ -229,6 +227,41 @@ async def get_openapi_yaml():
     )
     
     return yaml.dump(openapi_schema, default_flow_style=False)
+
+
+@app.post("/admin/init-database")
+@limiter.limit("1/minute")  # Very restrictive since this is admin-only
+async def initialize_database(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
+    """
+    Initialize database with required extensions (admin only).
+    This endpoint creates the pgvector extension if it doesn't exist.
+    """
+    # Verify token (you should set a strong admin token)
+    if not verify_token(credentials.credentials):
+        raise HTTPException(status_code=401, detail="Invalid authentication")
+    
+    try:
+        from api.database import get_session
+        async with get_session() as session:
+            # Create pgvector extension
+            await session.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+            await session.commit()
+            
+            logger.info("Database initialized successfully with pgvector extension")
+            return {
+                "status": "success",
+                "message": "Database initialized with pgvector extension",
+                "timestamp": datetime.utcnow().isoformat()
+            }
+    except Exception as e:
+        logger.error(f"Database initialization failed: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to initialize database: {str(e)}"
+        )
 
 
 if __name__ == "__main__":
