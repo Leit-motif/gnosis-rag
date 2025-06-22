@@ -54,6 +54,8 @@ USER app
 COPY --chown=app:app ./api ./api
 COPY --chown=app:app ./backend/enhanced_graph_retriever.py ./backend/
 COPY --chown=app:app ./plugin ./plugin
+COPY --chown=app:app ./alembic ./alembic
+COPY --chown=app:app ./alembic.ini ./
 
 # Create necessary directories
 RUN mkdir -p /app/logs /app/data
