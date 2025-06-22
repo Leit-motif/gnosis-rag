@@ -13,10 +13,8 @@ pgvector==0.2.4
 # Graph and Vector Processing
 networkx==3.2.1
 numpy==1.24.4
-# Note: torch/torchvision/torchaudio installed separately in Dockerfile as CPU-only
-sentence-transformers==2.2.2
 
-# OpenAI Integration
+# OpenAI Integration (our only embedding provider)
 openai==1.3.7
 
 # HTTP Client

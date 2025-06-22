@@ -46,54 +46,48 @@ class IndexingProgress:
         return remaining / rate if rate > 0 else 0
 
 class FastIndexer:
-    """Optimized indexer for speed and large vault processing"""
+    """
+    Optimized indexer for fast embedding generation and FAISS index creation.
+    Supports aggressive parallelization, streaming, and checkpointing for large vaults.
+    """
     
     def __init__(self, config: Dict[str, Any]):
-        self.config = config
+        # Default configuration
+        default_config = {
+            "batch_size": 100,
+            "max_concurrent_requests": 10,
+            "embedding_timeout": 60,
+            "checkpoint_interval": 500,
+            "use_streaming": True,
+            "max_memory_mb": 2000,
+            "embedding_model": "text-embedding-3-small"
+        }
         
-        # Get fast indexing config from the main config
-        fast_config = config.get("fast_indexing", {})
+        # Merge with provided config
+        merged_config = {**default_config, **config}
         
-        # Check if using a preset
-        preset_name = fast_config.get("preset", "large_vault")
-        preset_config = self._get_preset_config(preset_name)
+        # Configuration
+        self.batch_size = merged_config["batch_size"]
+        self.max_concurrent_requests = merged_config["max_concurrent_requests"]
+        self.embedding_timeout = merged_config["embedding_timeout"]
+        self.checkpoint_interval = merged_config["checkpoint_interval"]
+        self.use_streaming = merged_config["use_streaming"]
+        self.max_memory_mb = merged_config["max_memory_mb"]
         
-        # Merge preset with manual overrides
-        merged_config = {**preset_config, **fast_config}
+        # Apply preset if specified
+        preset = merged_config.get("preset")
+        if preset:
+            preset_config = self._get_preset_config(preset)
+            for key, value in preset_config.items():
+                setattr(self, key, value)
         
-        # Optimized settings for speed
-        self.batch_size = merged_config.get("batch_size", 100)  # Much larger batches
-        self.max_concurrent_requests = merged_config.get("max_concurrent_requests", 10)  # More concurrency
-        self.embedding_timeout = merged_config.get("embedding_timeout", 60)  # Longer timeout
-        self.checkpoint_interval = merged_config.get("checkpoint_interval", 500)  # Save progress every 500 docs
+        # Initialize OpenAI client (only supported provider)
+        api_key = os.environ.get("OPENAI_API_KEY")
+        if not api_key:
+            raise ValueError("OPENAI_API_KEY environment variable is required for OpenAI embeddings")
         
-        # Memory management
-        self.use_streaming = merged_config.get("use_streaming", True)  # Process documents in streams
-        self.max_memory_mb = merged_config.get("max_memory_mb", 2000)  # Limit memory usage
-        
-        # Initialize embedding provider based on config
-        self.embedding_provider = config.get("embeddings", {}).get("provider", "openai")
-        
-        if self.embedding_provider == "openai":
-            # Initialize OpenAI client
-            api_key = os.environ.get("OPENAI_API_KEY")
-            if not api_key:
-                raise ValueError("OPENAI_API_KEY environment variable is required for OpenAI embeddings")
-            
-            self.client = AsyncOpenAI(api_key=api_key)
-            self.embedding_model = merged_config.get("embedding_model", "text-embedding-3-small")
-        else:
-            # Local embeddings
-            self.client = None
-            self.embedding_model = config.get("embeddings", {}).get("local_model", "all-mpnet-base-v2")
-            
-            # Import sentence transformers for local embeddings
-            try:
-                from sentence_transformers import SentenceTransformer
-                self.local_model = SentenceTransformer(self.embedding_model)
-                logger.info(f"Loaded local embedding model: {self.embedding_model}")
-            except ImportError:
-                raise ValueError("sentence-transformers is required for local embeddings. Install with: pip install sentence-transformers")
+        self.client = AsyncOpenAI(api_key=api_key)
+        self.embedding_model = merged_config.get("embedding_model", "text-embedding-3-small")
         
         # Paths
         self.vector_store_path = Path("data/vector_store")
@@ -304,27 +298,15 @@ class FastIndexer:
         try:
             texts = [doc['content'][:8191] for doc in batch]  # Truncate to avoid token limits
             
-            if self.embedding_provider == "openai":
-                # Make async OpenAI API call
-                response = await self.client.embeddings.create(
-                    model=self.embedding_model,
-                    input=texts,
-                    timeout=self.embedding_timeout
-                )
-                
-                # Extract embeddings
-                embeddings = np.array([item.embedding for item in response.data], dtype=np.float32)
-            else:
-                # Use local model (sentence transformers)
-                import asyncio
-                
-                # Run local embedding generation in thread pool to avoid blocking
-                loop = asyncio.get_event_loop()
-                embeddings = await loop.run_in_executor(
-                    None, 
-                    lambda: self.local_model.encode(texts, convert_to_numpy=True, show_progress_bar=False)
-                )
-                embeddings = embeddings.astype(np.float32)
+            # Make async OpenAI API call
+            response = await self.client.embeddings.create(
+                model=self.embedding_model,
+                input=texts,
+                timeout=self.embedding_timeout
+            )
+            
+            # Extract embeddings
+            embeddings = np.array([item.embedding for item in response.data], dtype=np.float32)
             
             return embeddings, batch
             

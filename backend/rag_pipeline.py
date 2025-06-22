@@ -14,7 +14,6 @@ from typing import Any, Dict, List, Optional, Tuple
 import faiss
 import numpy as np
 from openai import OpenAI
-from sentence_transformers import SentenceTransformer
 from tenacity import retry, stop_after_attempt, wait_exponential
 from tqdm import tqdm
 
@@ -78,76 +77,22 @@ class RAGPipeline:
         self.config = config
         self.logger = logging.getLogger(__name__)
 
-        # Determine embedding provider
+        # Initialize OpenAI embeddings (only supported provider)
         embedding_config = config.get("embeddings", {})
-        embedding_provider = embedding_config.get("provider", "openai")
-
-        # Check environment variables first, then config
-        env_provider = os.environ.get("EMBEDDING_PROVIDER")
-        if env_provider:
-            embedding_provider = env_provider
-
-        if embedding_provider == "local":
-            # For local embeddings, use LOCAL_MODEL env var or config model
-            local_model = os.environ.get(
-                "LOCAL_MODEL"
-            ) or embedding_config.get("model", "all-MiniLM-L6-v2")
-
-            if "mpnet" in local_model:
-                self.logger.warning(
-                    f"Switching from {local_model} to all-MiniLM-L6-v2 for "
-                    "better speed"
-                )
-                local_model = "all-MiniLM-L6-v2"
-
-            self.logger.info(
-                f"Initializing local embedding model: {local_model}"
-            )
-            self.sentence_transformer = SentenceTransformer(local_model)
-            self.embed = self._embed_local
-
-            # Set dimension based on model
-            if "all-MiniLM-L6-v2" in local_model:
-                self.dimension = 384
-            elif "all-mpnet-base-v2" in local_model:
-                self.dimension = 768
-            else:
-                self.dimension = 384  # Default for most sentence-transformers models
-            self.batch_size = (
-                150  # Optimized batch size for local processing (based on profiling)
-            )
-        else:
-            # Initialize OpenAI embeddings
-            embedding_model = os.environ.get(
-                "EMBEDDING_MODEL"
-            ) or embedding_config.get("model", "text-embedding-ada-002")
-            self.logger.info(
-                f"Initializing OpenAI embedding model: {embedding_model}"
-            )
-            api_key = os.environ.get("OPENAI_API_KEY")
-            if not api_key:
-                raise ValueError(
-                    "OPENAI_API_KEY environment variable is required for chat "
-                    "completions"
-                )
-            self.client = OpenAI(api_key=api_key)
-            self.embed = self._embed_openai
-            self.dimension = 1536  # OpenAI dimension
-            self.batch_size = 500  # Smaller batch for API
-
-        # Initialize OpenAI client for chat completions (always needed regardless of
-        # embedding provider)
-        chat_api_key = os.environ.get("OPENAI_API_KEY")
-        if not chat_api_key:
-            raise ValueError(
-                "OPENAI_API_KEY environment variable is required for chat "
-                "completions"
-            )
-
-        # If we haven't already initialized the client for embeddings, initialize
-        # it now for chat
-        if not hasattr(self, "client"):
-            self.client = OpenAI(api_key=chat_api_key)
+        embedding_model = os.environ.get(
+            "EMBEDDING_MODEL"
+        ) or embedding_config.get("model", "text-embedding-3-small")
+        
+        self.logger.info(f"Initializing OpenAI embedding model: {embedding_model}")
+        
+        api_key = os.environ.get("OPENAI_API_KEY")
+        if not api_key:
+            raise ValueError("OPENAI_API_KEY environment variable is required")
+        
+        self.client = OpenAI(api_key=api_key)
+        self.embed = self._embed_openai
+        self.dimension = 1536  # OpenAI text-embedding-3-small dimension
+        self.batch_size = 500  # Optimized for API calls
 
         self.document_store = {}
         self.doc_embeddings = {}
@@ -347,28 +292,6 @@ class RAGPipeline:
                 "Creating in-memory index as fallback with dimension 1536"
             )
             return faiss.IndexFlatL2(1536)  # Default OpenAI embedding dimension
-
-    def _embed_local(self, texts: List[str]) -> np.ndarray:
-        """Get embeddings using local sentence-transformers model - optimized for speed"""
-        try:
-            self.logger.info(
-                f"Generating embeddings for {len(texts)} texts using local "
-                "model (batch processing)"
-            )
-
-            # Process all texts at once for maximum speed
-            embeddings = self.sentence_transformer.encode(
-                texts,
-                convert_to_numpy=True,
-                batch_size=32,  # Optimal batch size for speed
-                show_progress_bar=False,  # Disable progress bar for speed
-                normalize_embeddings=True,  # Pre-normalize for better similarity search
-            )
-
-            return embeddings
-        except Exception as e:
-            self.logger.error(f"Local embedding error: {str(e)}")
-            raise
 
     @retry(
         stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10)
