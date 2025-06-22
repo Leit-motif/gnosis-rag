@@ -4,6 +4,7 @@ Includes rate limiting, authentication, error handling, and structured logging.
 """
 
 import logging
+from contextlib import asynccontextmanager
 from typing import Optional
 from fastapi import FastAPI, HTTPException, Depends, File, UploadFile, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,6 +13,7 @@ from pydantic import BaseModel, Field
 
 from api.config import settings
 from api.middleware import setup_middleware, limiter, security, verify_token
+from api.database import init_db, close_db, check_db_connection
 
 # Configure logging
 logging.basicConfig(
@@ -19,6 +21,27 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan event handler."""
+    # Startup
+    logger.info("Starting up Gnosis RAG API...")
+    try:
+        await init_db()
+        logger.info("Database initialized successfully")
+    except Exception as e:
+        logger.error(f"Failed to initialize database: {e}")
+        raise
+    
+    yield
+    
+    # Shutdown
+    logger.info("Shutting down Gnosis RAG API...")
+    await close_db()
+    logger.info("Database connections closed")
+
 
 # Create FastAPI app with enhanced configuration
 app = FastAPI(
@@ -28,6 +51,7 @@ app = FastAPI(
     debug=settings.debug,
     docs_url="/docs" if settings.debug else None,
     redoc_url="/redoc" if settings.debug else None,
+    lifespan=lifespan,
 )
 
 # Add CORS middleware
@@ -50,6 +74,7 @@ class HealthResponse(BaseModel):
     version: str
     debug: bool
     timestamp: str
+    database: str
 
 
 class UploadResponse(BaseModel):
@@ -92,11 +117,17 @@ async def health_check(request: Request):
     from datetime import datetime
     
     logger.info("Health check requested")
+    
+    # Check database connectivity
+    db_status = "connected" if await check_db_connection() else "disconnected"
+    overall_status = "ok" if db_status == "connected" else "degraded"
+    
     return HealthResponse(
-        status="ok",
+        status=overall_status,
         version=settings.api_version,
         debug=settings.debug,
-        timestamp=datetime.utcnow().isoformat()
+        timestamp=datetime.utcnow().isoformat(),
+        database=db_status
     )
 
 

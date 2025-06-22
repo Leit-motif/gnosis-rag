@@ -7,6 +7,7 @@ pydantic-settings==2.8.1
 # Database and Vector Store
 psycopg[binary]==3.1.13
 sqlalchemy[asyncio]==2.0.23
+alembic==1.13.1
 pgvector==0.2.4
 
 # Graph and Vector Processing
