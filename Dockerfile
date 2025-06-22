@@ -20,6 +20,9 @@ WORKDIR /app
 
 # Copy requirements and install Python dependencies
 COPY requirements-api.txt .
+
+# Switch to app user before installing packages
+USER app
 RUN pip install --user --no-warn-script-location -r requirements-api.txt
 
 # Production stage
