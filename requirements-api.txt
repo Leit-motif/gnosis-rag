@@ -9,6 +9,7 @@ psycopg[binary]==3.1.13
 sqlalchemy[asyncio]==2.0.23
 alembic==1.13.1
 pgvector==0.2.4
+asyncpg>=0.27.0
 
 # Graph and Vector Processing
 networkx==3.2.1
