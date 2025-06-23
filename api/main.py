@@ -12,6 +12,7 @@ from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from datetime import datetime
+from fastapi.openapi.utils import get_openapi
 
 from api.config import settings
 from api.middleware import setup_middleware, limiter, security, verify_token
@@ -58,6 +59,26 @@ app = FastAPI(
         {"url": settings.api_url, "description": "Gnosis RAG API server"}
     ],
 )
+
+# Ensure the OpenAPI schema includes only the public server URL
+
+def custom_openapi():
+    """Generate a custom OpenAPI schema with the correct public server URL."""
+    if app.openapi_schema:
+        return app.openapi_schema
+
+    openapi_schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+    )
+    openapi_schema["servers"] = [{"url": settings.api_url}]
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+
+app.openapi = custom_openapi  # type: ignore
 
 # Add CORS middleware
 app.add_middleware(
