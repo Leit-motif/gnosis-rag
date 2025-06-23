@@ -54,6 +54,9 @@ app = FastAPI(
     docs_url="/docs" if settings.debug else None,
     redoc_url="/redoc" if settings.debug else None,
     lifespan=lifespan,
+    servers=[
+        {"url": settings.api_url, "description": "Gnosis RAG API server"}
+    ],
 )
 
 # Add CORS middleware
@@ -207,7 +210,7 @@ async def get_plugin_manifest():
         },
         api={
             "type": "openapi",
-            "url": f"http://localhost:{settings.port}/openapi.json"
+            "url": f"{settings.api_url}/openapi.json"
         }
     )
 

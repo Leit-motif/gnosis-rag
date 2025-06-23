@@ -32,6 +32,11 @@ class Settings(BaseSettings):
     )
     
     # API Configuration
+    api_url: str = Field(
+        default="http://localhost:8080",
+        env="API_URL",
+        description="Public URL for the API, used for OpenAPI server spec."
+    )
     port: int = Field(
         default=8080,
         env="PORT",
