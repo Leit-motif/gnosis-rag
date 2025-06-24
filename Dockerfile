@@ -34,7 +34,9 @@ FROM python:3.11-slim
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH="/home/app/.local/bin:$PATH" \
-    PORT=8080
+    PORT=8080 \
+    OBSIDIAN_VAULT_PATH=/app/data/vault \
+    OPENAI_SYSTEM_PROMPT="You are Gnosis, an AI assistant that helps users query their Obsidian vault."
 
 # Install runtime dependencies only
 RUN apt-get update && apt-get install -y \
@@ -60,8 +62,9 @@ COPY --chown=app:app ./backend ./backend
 COPY --chown=app:app ./plugin ./plugin
 COPY --chown=app:app ./data ./data
 
-# Create necessary directories
-RUN mkdir -p /app/logs /app/data/conversations /app/data/vector_store
+# Create necessary directories and minimal vault structure
+RUN mkdir -p /app/logs /app/data/conversations /app/data/vector_store /app/data/vault && \
+    echo "# Welcome to Gnosis\n\nThis is a placeholder vault for the deployed API.\nConnect your real Obsidian vault to use the full functionality." > /app/data/vault/README.md
 
 # Expose port
 EXPOSE $PORT
@@ -71,4 +74,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
     CMD python -c "import requests; requests.get('http://localhost:$PORT/health')" || exit 1
 
 # Run the complete backend application with all your original endpoints
-CMD uvicorn backend.main:app --host 0.0.0.0 --port $PORT 
+CMD uvicorn backend.main:app --host 0.0.0.0 --port ${PORT:-8000} 
