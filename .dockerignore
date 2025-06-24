@@ -54,6 +54,5 @@ full_reindex.py
 *test*.py
 tests/
 
-# Original requirements (we use requirements-api.txt)
-requirements.txt
+# Setup files
 setup.py 
