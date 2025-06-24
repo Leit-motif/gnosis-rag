@@ -4,7 +4,7 @@ info:
   description: API for querying and analyzing Obsidian vaults using hybrid RAG
   version: "1.0.1"
 servers:
-  - url: https://deliver-taxes-moses-compiler.trycloudflare.com
+  - url: https://gnosis-rag-api.onrender.com
     description: Cloudflare Tunnel URL
 paths:
   /health:

@@ -19,13 +19,13 @@ RUN useradd --create-home --shell /bin/bash app
 WORKDIR /app
 
 # Copy requirements and install Python dependencies
-COPY requirements-api.txt .
+COPY requirements.txt .
 
 # Switch to app user before installing packages
 USER app
 
-# Install all dependencies (much faster without PyTorch!)
-RUN pip install --user --no-warn-script-location -r requirements-api.txt
+# Install all dependencies for the full backend
+RUN pip install --user --no-warn-script-location -r requirements.txt
 
 # Production stage
 FROM python:3.11-slim
@@ -55,15 +55,13 @@ RUN chown app:app /app
 # Switch to non-root user
 USER app
 
-# Copy application code
-COPY --chown=app:app ./api ./api
-COPY --chown=app:app ./backend/enhanced_graph_retriever.py ./backend/
+# Copy application code - deploy the full backend with all functionality
+COPY --chown=app:app ./backend ./backend
 COPY --chown=app:app ./plugin ./plugin
-COPY --chown=app:app ./alembic ./alembic
-COPY --chown=app:app ./alembic.ini ./
+COPY --chown=app:app ./data ./data
 
 # Create necessary directories
-RUN mkdir -p /app/logs /app/data
+RUN mkdir -p /app/logs /app/data/conversations /app/data/vector_store
 
 # Expose port
 EXPOSE $PORT
@@ -72,5 +70,5 @@ EXPOSE $PORT
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
     CMD python -c "import requests; requests.get('http://localhost:$PORT/health')" || exit 1
 
-# Run the application
-CMD uvicorn api.main:app --host 0.0.0.0 --port $PORT --access-log --log-config api/logging.yaml 
+# Run the complete backend application with all your original endpoints
+CMD uvicorn backend.main:app --host 0.0.0.0 --port $PORT 
