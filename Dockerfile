@@ -38,11 +38,15 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     OBSIDIAN_VAULT_PATH=/app/data/vault \
     OPENAI_SYSTEM_PROMPT="You are Gnosis, an AI assistant that helps users query their Obsidian vault."
 
-# Install runtime dependencies only
+# Install runtime dependencies (libpq + zstd for compression)
 RUN apt-get update && apt-get install -y \
     libpq5 \
+    zstd \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
+
+# AWS CLI for S3 upload/download (small footprint)
+RUN pip install --no-cache-dir awscli==1.29.*
 
 # Create non-root user
 RUN useradd --create-home --shell /bin/bash app
@@ -73,5 +77,9 @@ EXPOSE $PORT
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
     CMD python -c "import requests; requests.get('http://localhost:$PORT/health')" || exit 1
 
-# Run the complete backend application with all your original endpoints
-CMD uvicorn backend.main:app --host 0.0.0.0 --port ${PORT:-8000} 
+# Copy bootstrap script and make it executable
+COPY --chown=app:app ./scripts/boot.sh /app/scripts/boot.sh
+RUN chmod +x /app/scripts/boot.sh
+
+# Start via bootstrapper (downloads existing index or builds & uploads)
+CMD ["/app/scripts/boot.sh"] 
