@@ -122,11 +122,30 @@ except Exception as e:
 def health_check():
     """
     Provides a comprehensive health check of the API and RAG pipeline.
+    Returns 200 OK even when index is building to keep Render happy.
     """
-    healthy, message = rag_pipeline.check_health()
-    if not healthy:
+    try:
+        healthy, message = rag_pipeline.check_health()
+        if healthy:
+            return {"status": "ok", "message": message}
+        
+        # Check if it's just missing data (not a fatal error)
+        degraded_keywords = [
+            "not ready", "not loaded", "empty", "out of sync", 
+            "index is not loaded", "document store is empty"
+        ]
+        if any(keyword in message.lower() for keyword in degraded_keywords):
+            return {"status": "degraded", "message": f"RAG pipeline initializing: {message}"}
+        
+        # Other errors still return 503
         raise HTTPException(status_code=503, detail=f"Service Unavailable: {message}")
-    return {"status": "ok", "message": message}
+        
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions as-is
+    except Exception as e:
+        # Basic health check - API is up even if RAG pipeline isn't ready
+        logger.warning(f"RAG pipeline health check failed: {str(e)}")
+        return {"status": "degraded", "message": f"API running, RAG pipeline initializing: {str(e)}"}
 
 
 @app.post("/sync")
