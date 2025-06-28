@@ -23,6 +23,19 @@ from obsidian_loader_v2 import ObsidianLoaderV2  # noqa: E402
 from rag_pipeline import RAGPipeline  # noqa: E402
 from utils import ensure_directories, load_config, validate_config  # noqa: E402
 
+# Import Dropbox client from the api directory
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'api'))
+try:
+    from dropbox_client import DropboxClient, DropboxAuthenticationError
+    from config import settings
+    DROPBOX_AVAILABLE = True
+    logger = logging.getLogger(__name__)
+    logger.info("Dropbox integration available")
+except ImportError as e:
+    DROPBOX_AVAILABLE = False
+    logger = logging.getLogger(__name__)
+    logger.warning(f"Dropbox integration not available: {e}")
+
 # Load and validate configuration
 config = load_config()
 validate_config(config)
@@ -102,6 +115,18 @@ class SaveRequest(BaseModel):
     session_id: Optional[str] = None  # For conversation-based saving
     messages: Optional[List[Dict[str, str]]] = None  # For direct message saving
     content: Optional[str] = None  # For exact content saving
+
+
+class LoadRequest(BaseModel):
+    file_path: str  # Relative path to the file to load
+
+
+class LoadResponse(BaseModel):
+    status: str
+    content: str
+    source: str  # "dropbox", "local", or "not_found"
+    file_path: str
+    last_modified: Optional[str] = None
 
 
 # Initialize components
@@ -575,6 +600,22 @@ async def save_content(request: SaveRequest):
             with open(daily_note_path, "a", encoding="utf-8") as f:
                 f.write(f"\n\n{formatted_conversation}\n")
 
+        # Sync with Dropbox if enabled
+        if DROPBOX_AVAILABLE and getattr(settings, 'dropbox_enabled', False):
+            try:
+                logger.info("Syncing with Dropbox...")
+                dropbox_client = DropboxClient(settings)
+                # Convert local path to relative path for Dropbox
+                relative_path = str(daily_note_path.relative_to(Path(config["vault"]["path"])))
+                dropbox_client.upload_file(str(daily_note_path), f"/{relative_path}")
+                logger.info("Synced with Dropbox successfully")
+            except DropboxAuthenticationError as e:
+                logger.error(f"Dropbox authentication failed: {e}")
+            except Exception as e:
+                logger.error(f"Failed to sync with Dropbox: {e}")
+        elif DROPBOX_AVAILABLE:
+            logger.debug("Dropbox integration available but not enabled")
+
         return {
             "status": "success",
             "message": f"Conversation '{request.conversation_name}' saved to {daily_note_path.name}",
@@ -589,6 +630,118 @@ async def save_content(request: SaveRequest):
         logger.error(f"Failed to save conversation: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=500, detail=f"Failed to save conversation: {str(e)}"
+        )
+
+
+@app.post("/load", response_model=LoadResponse)
+async def load_content(request: LoadRequest):
+    """
+    Load file content from Dropbox or local storage, prioritizing the most recent version.
+    """
+    try:
+        logger.info(f"Loading file: {request.file_path}")
+        
+        # Construct local file path
+        local_path = Path(config["vault"]["path"]) / request.file_path
+        
+        dropbox_content = None
+        dropbox_modified = None
+        local_content = None
+        local_modified = None
+        
+        # Try to get file from Dropbox if available
+        if DROPBOX_AVAILABLE and getattr(settings, 'dropbox_enabled', False):
+            try:
+                dropbox_client = DropboxClient(settings)
+                dropbox_path = f"/{request.file_path}"
+                
+                # Check if file exists on Dropbox
+                if dropbox_client.file_exists(dropbox_path):
+                    logger.info(f"File found on Dropbox: {dropbox_path}")
+                    dropbox_content = dropbox_client.download_file(dropbox_path)
+                    
+                    # Get file metadata for modification time
+                    metadata = dropbox_client.get_file_metadata(dropbox_path)
+                    if metadata and 'client_modified' in metadata:
+                        dropbox_modified = metadata['client_modified']
+                        
+            except Exception as e:
+                logger.warning(f"Failed to load from Dropbox: {e}")
+        
+        # Try to get file from local storage
+        if local_path.exists():
+            logger.info(f"File found locally: {local_path}")
+            with open(local_path, 'r', encoding='utf-8') as f:
+                local_content = f.read()
+            local_modified = datetime.fromtimestamp(local_path.stat().st_mtime).isoformat()
+        
+        # Determine which version to use (prioritize most recent)
+        if dropbox_content and local_content:
+            # Compare modification times if available
+            if dropbox_modified and local_modified:
+                dropbox_time = datetime.fromisoformat(dropbox_modified.replace('Z', '+00:00'))
+                local_time = datetime.fromisoformat(local_modified)
+                
+                if dropbox_time > local_time:
+                    logger.info("Using Dropbox version (more recent)")
+                    return LoadResponse(
+                        status="success",
+                        content=dropbox_content,
+                        source="dropbox",
+                        file_path=request.file_path,
+                        last_modified=dropbox_modified
+                    )
+                else:
+                    logger.info("Using local version (more recent)")
+                    return LoadResponse(
+                        status="success",
+                        content=local_content,
+                        source="local",
+                        file_path=request.file_path,
+                        last_modified=local_modified
+                    )
+            else:
+                # Default to Dropbox if modification times unavailable
+                logger.info("Using Dropbox version (modification times unavailable)")
+                return LoadResponse(
+                    status="success",
+                    content=dropbox_content,
+                    source="dropbox",
+                    file_path=request.file_path,
+                    last_modified=dropbox_modified
+                )
+        elif dropbox_content:
+            logger.info("Using Dropbox version (only source)")
+            return LoadResponse(
+                status="success",
+                content=dropbox_content,
+                source="dropbox",
+                file_path=request.file_path,
+                last_modified=dropbox_modified
+            )
+        elif local_content:
+            logger.info("Using local version (only source)")
+            return LoadResponse(
+                status="success",
+                content=local_content,
+                source="local",
+                file_path=request.file_path,
+                last_modified=local_modified
+            )
+        else:
+            logger.warning(f"File not found: {request.file_path}")
+            raise HTTPException(
+                status_code=404,
+                detail=f"File not found: {request.file_path}"
+            )
+            
+    except HTTPException as he:
+        # Re-raise FastAPI HTTP exceptions
+        raise he
+    except Exception as e:
+        logger.error(f"Failed to load file: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500, detail=f"Failed to load file: {str(e)}"
         )
 
 
