@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: Gnosis RAG API
   description: API for querying and analyzing Obsidian vaults using hybrid RAG
-  version: "1.0.1"
+  version: "1.0.0"
 servers:
   - url: https://gnosis-rag-api.onrender.com
     description: Cloudflare Tunnel URL
@@ -117,13 +117,23 @@ paths:
             application/json:
               schema:
                 type: object
+                required:
+                  - status
+                  - message
+                  - file_path
                 properties:
                   status:
                     type: string
+                    description: Status of the save operation
+                    example: "success"
                   message:
                     type: string
+                    description: Human-readable message about the operation
+                    example: "Conversation 'My Chat' saved to 2025-06-27.md"
                   file_path:
                     type: string
+                    description: Relative path where the content was saved
+                    example: "2025/06/2025-06-27.md"
         "422":
           description: Validation Error
           content:
@@ -200,22 +210,37 @@ components:
         conversation_name:
           type: string
           title: Conversation Name
+          description: Name for the conversation being saved
+          example: "My Chat with GPT"
         session_id:
           type: string
           title: Session ID
+          description: Optional session ID for conversation-based saving
+          example: "session_123"
         messages:
           type: array
+          title: Messages
+          description: Array of conversation messages
           items:
             type: object
+            required:
+              - role
+              - content
             properties:
               role:
                 type: string
+                description: Message role
+                enum: ["user", "assistant", "system"]
+                example: "user"
               content:
                 type: string
-          title: Messages
+                description: Message content
+                example: "Hello, how are you?"
         content:
           type: string
           title: Content
+          description: Direct content to save (alternative to messages)
+          example: "This is the content I want to save directly."
     QueryResponse:
       title: QueryResponse
       type: object

@@ -31,6 +31,38 @@ class Settings(BaseSettings):
         description="OpenAI model for generating embeddings"
     )
     
+    # Dropbox Configuration
+    dropbox_app_key: Optional[str] = Field(
+        default=None,
+        env="DROPBOX_APP_KEY",
+        description="Dropbox app key for vault synchronization"
+    )
+    dropbox_app_secret: Optional[str] = Field(
+        default=None,
+        env="DROPBOX_APP_SECRET",
+        description="Dropbox app secret for vault synchronization"
+    )
+    dropbox_refresh_token: Optional[str] = Field(
+        default=None,
+        env="DROPBOX_REFRESH_TOKEN",
+        description="Dropbox refresh token for vault synchronization"
+    )
+    dropbox_enabled: bool = Field(
+        default=False,
+        env="DROPBOX_ENABLED",
+        description="Enable Dropbox vault synchronization"
+    )
+    dropbox_sync_on_startup: bool = Field(
+        default=True,
+        env="DROPBOX_SYNC_ON_STARTUP",
+        description="Perform sync on application startup"
+    )
+    dropbox_sync_interval_minutes: int = Field(
+        default=15,
+        env="DROPBOX_SYNC_INTERVAL_MINUTES",
+        description="Interval for automatic sync in minutes"
+    )
+    
     # API Configuration
     api_url: str = Field(
         default="http://localhost:8080",
