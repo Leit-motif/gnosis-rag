@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: Gnosis RAG API
   description: API for querying and analyzing Obsidian vaults using hybrid RAG
-  version: "1.0.0"
+  version: 1.0.1
 servers:
   - url: https://gnosis-rag-api.onrender.com
     description: Cloudflare Tunnel URL
@@ -117,23 +117,13 @@ paths:
             application/json:
               schema:
                 type: object
-                required:
-                  - status
-                  - message
-                  - file_path
                 properties:
                   status:
                     type: string
-                    description: Status of the save operation
-                    example: "success"
                   message:
                     type: string
-                    description: Human-readable message about the operation
-                    example: "Conversation 'My Chat' saved to 2025-06-27.md"
                   file_path:
                     type: string
-                    description: Relative path where the content was saved
-                    example: "2025/06/2025-06-27.md"
         "422":
           description: Validation Error
           content:
@@ -179,7 +169,7 @@ paths:
           required: false
           schema:
             type: string
-          description: "Date range to filter (e.g., 'today', 'last_7_days', '2023-01-01:2023-01-31')."
+          description: Date range to filter (e.g., 'today', 'last_7_days', '2023-01-01:2023-01-31').
       responses:
         "200":
           description: Successful Response
@@ -199,6 +189,93 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorDetail"
+  /dropbox/sync:
+    post:
+      summary: Dropbox Vault Sync
+      description: |
+        Performs bidirectional synchronization between Dropbox and the local Obsidian vault.
+        Downloads new/updated files from Dropbox, uploads new/updated files from local vault, and resolves conflicts.
+      operationId: sync_dropbox_vault_post
+      responses:
+        "200":
+          description: Successful Dropbox Sync
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  message:
+                    type: string
+                    example: Dropbox vault synchronized successfully.
+                  files_downloaded:
+                    type: integer
+                    example: 2
+                  files_uploaded:
+                    type: integer
+                    example: 1
+                  files_conflicted:
+                    type: integer
+                    example: 0
+                  files_skipped:
+                    type: integer
+                    example: 5
+                  errors:
+                    type: array
+                    items:
+                      type: string
+                  timestamp:
+                    type: string
+                    format: date-time
+        "400":
+          description: Dropbox Sync Disabled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+  /dropbox/status:
+    get:
+      summary: Dropbox Sync Status
+      description: Returns the current Dropbox sync status and configuration.
+      operationId: get_dropbox_status
+      responses:
+        "200":
+          description: Dropbox Sync Status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  enabled:
+                    type: boolean
+                  is_syncing:
+                    type: boolean
+                  last_sync_time:
+                    type: string
+                    format: date-time
+                  sync_interval_minutes:
+                    type: integer
+                  local_vault_path:
+                    type: string
+                  dropbox_connected:
+                    type: boolean
+                  timestamp:
+                    type: string
+                    format: date-time
+        "500":
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
 components:
   schemas:
     SaveRequest:
@@ -210,37 +287,22 @@ components:
         conversation_name:
           type: string
           title: Conversation Name
-          description: Name for the conversation being saved
-          example: "My Chat with GPT"
         session_id:
           type: string
           title: Session ID
-          description: Optional session ID for conversation-based saving
-          example: "session_123"
         messages:
           type: array
-          title: Messages
-          description: Array of conversation messages
           items:
             type: object
-            required:
-              - role
-              - content
             properties:
               role:
                 type: string
-                description: Message role
-                enum: ["user", "assistant", "system"]
-                example: "user"
               content:
                 type: string
-                description: Message content
-                example: "Hello, how are you?"
+          title: Messages
         content:
           type: string
           title: Content
-          description: Direct content to save (alternative to messages)
-          example: "This is the content I want to save directly."
     QueryResponse:
       title: QueryResponse
       type: object
