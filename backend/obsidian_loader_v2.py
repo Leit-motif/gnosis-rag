@@ -10,6 +10,8 @@ from langchain.text_splitter import (
 )
 from langchain_core.documents import Document
 
+from backend.storage.base import VaultStorage
+
 
 class ObsidianDocument:
     """Represents a processed Obsidian document with metadata"""
@@ -50,8 +52,8 @@ class ObsidianDocument:
 class ObsidianLoaderV2:
     """Enhanced Obsidian vault loader with change detection."""
 
-    def __init__(self, vault_path: str):
-        self.vault_path = Path(vault_path).resolve()
+    def __init__(self, storage: VaultStorage):
+        self.storage = storage
         self.logger = logging.getLogger(__name__)
         self.documents: List[ObsidianDocument] = []
 
@@ -67,7 +69,7 @@ class ObsidianLoaderV2:
         )
 
     def extract_metadata(
-        self, file_path: Path, content: frontmatter.Post
+        self, file_path_str: str, content: frontmatter.Post, metadata_from_storage: dict
     ) -> Dict[str, Any]:
         """Extract metadata from an Obsidian markdown file"""
         # Get frontmatter metadata
@@ -133,15 +135,15 @@ class ObsidianLoaderV2:
 
         # Build metadata dict with deduplicated lists
         return {
-            "title": metadata.get("title", file_path.stem),
+            "title": metadata.get("title", Path(file_path_str).stem),
             "tags": unique_tags,
             "created": metadata.get("created", None),
             "modified": metadata.get("modified", None),
-            "last_modified_time": file_path.stat().st_mtime,
+            "last_modified_time": metadata_from_storage.get("last_modified"),
             "internal_links": internal_links_deduped,  # Deduplicated internal links
             "markdown_links": [link[1] for link in markdown_links],
             "link_titles": [link[0] for link in markdown_links],
-            "path": str(file_path.relative_to(self.vault_path)),
+            "path": file_path_str,
             **{
                 k: v
                 for k, v in metadata.items()
@@ -149,19 +151,23 @@ class ObsidianLoaderV2:
             },
         }
 
-    def process_file(self, file_path: Path) -> List[ObsidianDocument]:
+    def process_file(self, file_path_str: str) -> List[ObsidianDocument]:
         """Process a single markdown file into ObsidianDocuments"""
         try:
-            self.logger.debug(f"Processing file: {file_path}")
+            self.logger.debug(f"Processing file: {file_path_str}")
 
             # Read file content with frontmatter
-            content = frontmatter.load(file_path)
+            file_content_str = self.storage.read_file(file_path_str)
+            content = frontmatter.loads(file_content_str)
+            
+            # Get metadata from storage
+            metadata_from_storage = self.storage.get_metadata(file_path_str)
 
             # Extract metadata
-            metadata = self.extract_metadata(file_path, content)
+            metadata = self.extract_metadata(file_path_str, content, metadata_from_storage)
 
             # Extract date from filename if present
-            date_match = re.search(r"\d{4}-\d{2}-\d{2}", file_path.name)
+            date_match = re.search(r"\d{4}-\d{2}-\d{2}", Path(file_path_str).name)
             if date_match:
                 date_str = date_match.group(0)
                 metadata["date"] = date_str
@@ -187,7 +193,7 @@ class ObsidianLoaderV2:
                 doc = ObsidianDocument(
                     page_content=chunk,
                     metadata=metadata,
-                    source=Path(file_path).relative_to(self.vault_path).as_posix(),
+                    source=file_path_str,
                     chunk_id=i,
                 )
                 documents.append(doc)
@@ -195,7 +201,7 @@ class ObsidianLoaderV2:
             return documents
 
         except Exception as e:
-            self.logger.error(f"Error processing file {file_path}: {str(e)}")
+            self.logger.error(f"Error processing file {file_path_str}: {str(e)}")
             return []
 
     def load_vault(
@@ -221,16 +227,17 @@ class ObsidianLoaderV2:
         if last_indexed_state is None:
             last_indexed_state = {}
 
-        self.logger.info(f"Scanning for changes in vault: {self.vault_path}")
+        self.logger.info("Scanning for changes in vault...")
 
         # Get the current state of all markdown files in the vault
         try:
+            all_files = self.storage.list_files(file_extension=".md")
             current_file_state = {
-                p.relative_to(self.vault_path).as_posix(): p.stat().st_mtime
-                for p in self.vault_path.rglob("*.md")
+                file_path: self.storage.get_metadata(file_path)["last_modified"]
+                for file_path in all_files
             }
-        except FileNotFoundError:
-            self.logger.error(f"Vault path not found: {self.vault_path}")
+        except Exception as e:
+            self.logger.error(f"Could not list or get metadata for vault files: {e}")
             return {"added": [], "updated": [], "deleted": [], "new_state": {}}
 
         # Identify files that are new or have been updated
@@ -248,69 +255,54 @@ class ObsidianLoaderV2:
             len(current_file_state) - len(added_files) - len(updated_files)
         )
 
-        docs_to_add = []
-        for file_path_str in added_files:
-            self.logger.debug(f"Detected new file: {file_path_str}")
-            file_path = self.vault_path / file_path_str
-            docs_to_add.extend(self.process_file(file_path))
+        processed_docs = {"added": [], "updated": []}
 
-        docs_to_update = []
-        for file_path_str in updated_files:
-            self.logger.debug(f"Detected modified file: {file_path_str}")
-            file_path = self.vault_path / file_path_str
-            docs_to_update.extend(self.process_file(file_path))
+        # Process new and updated files
+        files_to_process = added_files + updated_files
+        if files_to_process:
+            self.logger.info(f"Processing {len(files_to_process)} changed files...")
+            for file_path_str in files_to_process:
+                docs = self.process_file(file_path_str)
+                if file_path_str in added_files:
+                    processed_docs["added"].extend(docs)
+                else:
+                    processed_docs["updated"].extend(docs)
 
-        if added_files or updated_files or deleted_files:
-            self.logger.info(
-                f"Vault diff: {len(added_files)} new, {len(updated_files)} updated, "
-                f"{len(deleted_files)} deleted, {unchanged_file_count} unchanged."
-            )
-        else:
-            self.logger.info("No changes detected in the vault.")
+        self.logger.info(
+            f"Found {len(added_files)} new, {len(updated_files)} updated, "
+            f"{len(deleted_files)} deleted, and {unchanged_file_count} unchanged files."
+        )
 
-        self.documents = docs_to_add + docs_to_update
+        self.documents = processed_docs["added"] + processed_docs["updated"]
 
         return {
-            "added": docs_to_add,
-            "updated": docs_to_update,
+            "added": processed_docs["added"],
+            "updated": processed_docs["updated"],
             "deleted": deleted_files,
             "new_state": current_file_state,
         }
 
+    def get_obsidian_documents(self) -> List[ObsidianDocument]:
+        """Returns the loaded documents as ObsidianDocument objects."""
+        return self.documents
+
     def get_documents(self) -> List[Document]:
-        """Returns all loaded documents as LangChain Documents"""
-        if not self.documents:
-            self.logger.warning(
-                "No documents loaded. Call load_vault() first for a differential load."
-            )
+        """Returns the loaded documents as LangChain Document objects."""
         return [doc.to_langchain_document() for doc in self.documents]
 
     def load_all_documents(
         self, config: Optional[Dict[str, Any]] = None
-    ) -> List[Document]:
-        """Loads all documents from the vault, for a full re-index."""
-        self.logger.info("Performing full load of Obsidian vault.")
+    ) -> List[ObsidianDocument]:
+        """Loads all documents from the vault without change detection"""
+        self.logger.info("Loading all documents from vault...")
+        all_docs = []
+        try:
+            file_paths = self.storage.list_files(file_extension=".md")
+            for file_path_str in file_paths:
+                processed_file_docs = self.process_file(file_path_str)
+                all_docs.extend(processed_file_docs)
+        except Exception as e:
+            self.logger.error(f"Error loading all documents: {e}")
 
-        exclude_folders = set()
-        if config and "vault" in config and "exclude_folders" in config["vault"]:
-            exclude_folders = set(config["vault"]["exclude_folders"])
-
-        all_files = self.vault_path.rglob("*.md")
-
-        if exclude_folders:
-            files_to_process = [
-                p
-                for p in all_files
-                if not any(parent.name in exclude_folders for parent in p.parents)
-            ]
-        else:
-            files_to_process = list(all_files)
-
-        self.documents = []
-        for file_path in files_to_process:
-            self.documents.extend(self.process_file(file_path))
-
-        self.logger.info(
-            f"Loaded {len(self.documents)} documents from {len(files_to_process)} files for full index."
-        )
-        return [doc.to_langchain_document() for doc in self.documents]
+        self.documents = all_docs
+        return self.get_obsidian_documents()

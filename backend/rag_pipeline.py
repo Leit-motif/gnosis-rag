@@ -4,12 +4,14 @@ import math
 import os
 import re
 import sys
+import tempfile
 import time
 import unicodedata
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+import tarfile
 
 import faiss
 import numpy as np
@@ -18,6 +20,9 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 from tqdm import tqdm
 
 from fastapi import HTTPException
+
+from backend.storage.base import VaultStorage
+from backend.storage.local_storage import LocalStorage
 
 # This must be before the local application imports to ensure correct module resolution
 sys.path.append(
@@ -73,8 +78,9 @@ class CustomJSONEncoder(json.JSONEncoder):
 
 
 class RAGPipeline:
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: Dict[str, Any], storage: VaultStorage):
         self.config = config
+        self.storage = storage
         self.logger = logging.getLogger(__name__)
 
         # Initialize OpenAI embeddings (only supported provider)
@@ -100,16 +106,16 @@ class RAGPipeline:
 
         vector_store_config = config.get("vector_store", {})
         self.dimension = vector_store_config.get("dimension", self.dimension)
-
-        base_path = Path(
-            vector_store_config.get("base_path", "data/vector_store")
-        ).resolve()
+        
+        # Paths for local index files are now relative to a temp dir, not config
+        self.temp_dir = tempfile.TemporaryDirectory()
+        base_path = Path(self.temp_dir.name)
         self.index_path = base_path / "faiss.index"
         self.doc_store_path = base_path / "document_store.json"
         self.embeddings_path = base_path / "embeddings.json"
-        self.state_path = base_path / "index_state.json"
-
-        base_path.mkdir(parents=True, exist_ok=True)
+        
+        # State path is now a relative path within the storage provider
+        self.state_path = "index_state.json"
 
         self.is_ready = False
         try:
@@ -123,12 +129,20 @@ class RAGPipeline:
             # is_ready remains False
 
         # Initialize graph retriever (ALWAYS RUN THIS)
-        self.graph_retriever = EnhancedGraphRetriever(
-            config["vault"]["path"],
-            config.get("graph_retriever", {})
-        )
-        self.graph_retriever.build_graph()
-        self.logger.info("Graph retriever initialized")
+        vault_path_for_graph = None
+        if isinstance(self.storage, LocalStorage):
+            vault_path_for_graph = self.storage.vault_path
+        
+        if vault_path_for_graph:
+            self.graph_retriever = EnhancedGraphRetriever(
+                vault_path_for_graph,
+                config.get("graph_retriever", {})
+            )
+            self.graph_retriever.build_graph()
+            self.logger.info("Graph retriever initialized")
+        else:
+            self.graph_retriever = None
+            self.logger.warning("Graph retriever disabled as no local vault path was available for the current storage provider.")
 
         # Initialize conversation memory (ALWAYS RUN THIS)
         memory_config = config.get("conversation_memory", {})
@@ -177,58 +191,61 @@ class RAGPipeline:
             raise
 
     def _load_state(self) -> Optional[Dict[str, float]]:
-        """Loads the last indexed state from file."""
-        if not self.state_path.exists():
-            self.logger.info("No index state file found.")
+        """Loads the last indexed state from storage."""
+        if not self.state_path:
             return None
         try:
-            with open(self.state_path, "r", encoding="utf-8") as f:
-                return json.load(f)
+            state_content = self.storage.read_file(self.state_path)
+            self.logger.info(f"Successfully loaded state from {self.state_path}")
+            return json.loads(state_content)
+        except FileNotFoundError:
+            self.logger.info(f"No index state file found at {self.state_path}.")
+            return None
         except (json.JSONDecodeError, IOError) as e:
-            self.logger.error(f"Error loading index state: {e}")
+            self.logger.error(f"Error loading index state from {self.state_path}: {e}")
             return None
 
     def _save_state(self, state: Dict[str, float]):
-        """Saves the index state to file."""
-        self._atomic_json_save(state, self.state_path)
+        """Saves the index state to storage."""
+        if not self.state_path:
+            return
+        try:
+            state_content = json.dumps(state, indent=2)
+            self.storage.write_file(self.state_path, state_content)
+            self.logger.info(f"Successfully saved state to {self.state_path}")
+        except Exception as e:
+            self.logger.error(f"Failed to save state to {self.state_path}: {e}")
 
     def _load_or_initialize_store(self):
-        """Loads the index and document store or initializes a new one."""
-        if (
-            self.index_path.exists()
-            and self.doc_store_path.exists()
-            and self.embeddings_path.exists()
-        ):
-            try:
-                self.logger.info(f"Loading assets from {self.index_path.parent}...")
-                self.index = faiss.read_index(str(self.index_path))
+        """Loads the index and document store from storage or initializes a new one."""
+        try:
+            # Vector store is now a single tarball
+            tarball_name = "vector_store.tar.zst"
+            local_tarball_path = Path(self.temp_dir.name) / tarball_name
+            self.logger.info("Attempting to load existing vector store from storage...")
+            self.storage.load_vector_store(str(local_tarball_path))
+            
+            # Extract tarball
+            with tarfile.open(local_tarball_path, "r:zst") as tar:
+                tar.extractall(path=self.temp_dir.name)
+            self.logger.info("Successfully loaded and extracted existing vector store.")
 
-                with open(self.doc_store_path, "r", encoding="utf-8") as f:
-                    self.document_store = json.load(f)
+            # Now load from the extracted files
+            self.index = faiss.read_index(str(self.index_path))
+            with open(self.doc_store_path, "r", encoding="utf-8") as f:
+                self.document_store = json.load(f)
+            with open(self.embeddings_path, "r", encoding="utf-8") as f:
+                self.doc_embeddings = json.load(f)
+            
+            self.logger.info(f"Successfully loaded index with {self.index.ntotal} vectors.")
+            return
 
-                with open(self.embeddings_path, "r", encoding="utf-8") as f:
-                    self.doc_embeddings = json.load(f)
-
-                if self.index.ntotal != len(self.document_store):
-                    raise ValueError(
-                        "Index and document store are out of sync. "
-                        "Please re-index."
-                    )
-                self.logger.info(
-                    "Successfully loaded index with "
-                    f"{self.index.ntotal} vectors."
-                )
-                self._populate_missing_dates_from_paths()
-                return
-            except Exception as e:
-                self.logger.error(
-                    f"Failed to load existing index/store: {e}. "
-                    "Will attempt to re-initialize."
-                )
-                # Fall through to initialize a new store
-
-        self.logger.info("Initializing new FAISS index and document store.")
-        self._init_faiss()
+        except FileNotFoundError:
+            self.logger.info("No existing vector store found. Initializing new FAISS index.")
+            self._init_faiss()
+        except Exception as e:
+            self.logger.error(f"Failed to load or initialize store: {e}. Re-initializing.")
+            self._init_faiss()
 
     def _init_faiss(self) -> None:
         """Initializes an empty FAISS index."""

@@ -1,4 +1,5 @@
 import os
+import re
 from pathlib import Path
 from typing import Dict, Any
 import yaml
@@ -19,11 +20,18 @@ def load_config() -> Dict[str, Any]:
     with open(config_path, "r") as f:
         # Load YAML with environment variable interpolation
         config_str = f.read()
-        # Replace environment variables in the YAML string
-        for key, value in os.environ.items():
-            config_str = config_str.replace(f"${{{key}}}", value)
-        
-        config = yaml.safe_load(config_str)
+
+    # Regex to find all ${VAR:-default} or ${VAR} patterns
+    pattern = re.compile(r'\$\{(?P<name>\w+)(?::-(?P<default>.*?))?\}')
+    
+    def replace_var(match):
+        var_name = match.group('name')
+        default_value = match.group('default')
+        return os.environ.get(var_name, default_value)
+
+    config_str = pattern.sub(replace_var, config_str)
+    
+    config = yaml.safe_load(config_str)
     
     return config
 
@@ -45,19 +53,28 @@ def validate_config(config: Dict[str, Any]) -> None:
     Validate the configuration.
     Raises ValueError if configuration is invalid.
     """
-    required_env_vars = [
-        "OPENAI_API_KEY",
-        "OBSIDIAN_VAULT_PATH",
-    ]
+    required_env_vars = ["OPENAI_API_KEY"]
     
+    storage_provider = config.get("storage", {}).get("provider", "local")
+
+    if storage_provider == "local":
+        required_env_vars.append("LOCAL_VAULT_PATH")
+    elif storage_provider == "gcs":
+        # BUCKET_NAME can be in the config file directly or as an env var
+        if not config.get("storage", {}).get("gcs", {}).get("bucket_name"):
+            required_env_vars.append("GCS_BUCKET_NAME")
+    else:
+        raise ValueError(f"Invalid storage provider: {storage_provider}")
+
     missing_vars = [var for var in required_env_vars if not os.getenv(var)]
     if missing_vars:
         raise ValueError(f"Missing required environment variables: {', '.join(missing_vars)}")
     
-    # Validate Obsidian vault path
-    vault_path = Path(config["vault"]["path"])
-    if not vault_path.exists():
-        raise ValueError(f"Obsidian vault path does not exist: {vault_path}")
+    # Validate Obsidian vault path if local
+    if storage_provider == "local":
+        vault_path = Path(config["storage"]["local"]["vault_path"])
+        if not vault_path.exists():
+            raise ValueError(f"Obsidian vault path does not exist: {vault_path}")
     
     # Validate embedding configuration
     if config["embeddings"]["provider"] not in ["openai", "local"]:

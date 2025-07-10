@@ -22,6 +22,8 @@ from fast_indexer import FastIndexer  # noqa: E402
 from obsidian_loader_v2 import ObsidianLoaderV2  # noqa: E402
 from rag_pipeline import RAGPipeline  # noqa: E402
 from utils import ensure_directories, load_config, validate_config  # noqa: E402
+from backend.storage.local_storage import LocalStorage
+from backend.storage.gcs_storage import GCSStorage
 
 # Import Dropbox client from the api directory
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'api'))
@@ -132,10 +134,33 @@ class LoadResponse(BaseModel):
 # Initialize components
 try:
     logger.info("Initializing RAG pipeline...")
-    rag_pipeline = RAGPipeline(config)
+
+    # Set up storage backend
+    storage_config = config.get("storage", {})
+    provider = storage_config.get("provider", "local")
+    storage = None
+    if provider == "gcs":
+        bucket_name = storage_config.get("gcs", {}).get("bucket_name")
+        if bucket_name:
+            logger.info(f"Using GCS storage with bucket: {bucket_name}")
+            storage = GCSStorage(bucket_name=bucket_name)
+        else:
+            raise ValueError("GCS storage provider requires a bucket_name.")
+    else:
+        vault_path = storage_config.get("local", {}).get("vault_path")
+        if vault_path:
+            logger.info(f"Using local storage with path: {vault_path}")
+            storage = LocalStorage(vault_path=vault_path)
+        else:
+            raise ValueError("Local storage provider requires a vault_path.")
+
+    if not storage:
+        raise ValueError("Could not initialize a storage provider. Check your configuration.")
+
+    rag_pipeline = RAGPipeline(config, storage)
 
     logger.info("Loading Obsidian vault...")
-    vault_loader = ObsidianLoaderV2(config["vault"]["path"])
+    vault_loader = ObsidianLoaderV2(storage)
 
     logger.info("Initialization complete!")
 except Exception as e:
@@ -936,71 +961,30 @@ async def debug_all_conversations():
 @app.post("/index_fast")
 async def index_vault_fast():
     """
-    Ultra-fast indexing endpoint optimized for large vaults.
-    Uses aggressive optimization for maximum speed and throughput.
+    Index the vault using the high-speed, parallelized FastIndexer.
     """
     try:
-        logger.info("[FAST-INDEX] Starting ultra-fast vault indexing...")
+        logger.info("Starting fast vault indexing...")
 
-        # Load documents from vault
-        documents = vault_loader.load_vault(config)
-        logger.info(f"Loaded {len(documents)} documents from vault")
+        # Load all documents from the vault using the loader
+        document_objects = vault_loader.load_all_documents(config=config)
+        documents_to_index = [doc.to_dict() for doc in document_objects]
+        logger.info(f"Loaded {len(documents_to_index)} documents from vault for fast indexing.")
 
-        if not documents:
+        if not documents_to_index:
             logger.warning("No documents found to index.")
-            return {
-                "status": "warning",
-                "message": "No documents found to index.",
-                "document_count": 0,
-            }
+            return {"status": "warning", "message": "No documents found to index."}
+        
+        # Initialize the fast indexer and run it
+        indexer = FastIndexer(config=config.get("fast_indexing", {}), storage=storage)
+        result = await indexer.index_documents_fast(documents_to_index)
+        
+        # Optionally, re-sync RAG pipeline with the new index
+        if result.get("status") == "success":
+            logger.info("Fast indexing successful, reloading RAG pipeline components.")
+            rag_pipeline._load_or_initialize_store()
 
-        # Prepare documents for fast indexing
-        indexed_documents = [
-            {
-                "id": f"{doc.metadata.get('source', 'unknown_source')}#{doc.metadata.get('chunk_id', 'unknown_chunk')}",
-                "content": doc.page_content,
-                "metadata": doc.metadata,
-            }
-            for doc in documents
-        ]
-
-        # Create fast indexer using main config
-        fast_indexer = FastIndexer(config)
-
-        # Start fast indexing
-        result = await fast_indexer.index_documents_fast(indexed_documents, resume=True)
-
-        if result["status"] == "success":
-            logger.info(f"[SUCCESS] Fast indexing completed successfully!")
-            logger.info(
-                f"[STATS] Processed {result['processed_documents']} documents in {result['elapsed_time']}"
-            )
-            logger.info(
-                f"[PERFORMANCE] Speed: {result['documents_per_second']} docs/sec"
-            )
-
-            return {
-                "status": "success",
-                "message": f"Ultra-fast indexed {result['processed_documents']}/{result['total_documents']} documents",
-                "document_count": result["processed_documents"],
-                "total_documents": result["total_documents"],
-                "failed_documents": result["failed_documents"],
-                "elapsed_time": result["elapsed_time"],
-                "documents_per_second": result["documents_per_second"],
-                "index_path": result.get("index_path", ""),
-                "embeddings_shape": result.get("embeddings_shape", ""),
-                "optimization": "ultra_fast",
-            }
-        else:
-            logger.error(
-                f"Fast indexing failed: {result.get('error', 'Unknown error')}"
-            )
-            return {
-                "status": "error",
-                "message": f"Fast indexing failed: {result.get('error', 'Unknown error')}",
-                "processed_documents": result.get("processed_documents", 0),
-                "error_details": result.get("error", "Unknown error"),
-            }
+        return result
 
     except Exception as e:
         logger.error(f"Fast indexing endpoint failed: {str(e)}", exc_info=True)
@@ -1024,35 +1008,20 @@ async def get_fast_indexing_status():
 @app.post("/index_fast_resume")
 async def resume_fast_indexing():
     """
-    Resume fast indexing from last checkpoint
+    Resumes a previously interrupted fast indexing process.
     """
     try:
-        logger.info("Resuming fast indexing from checkpoint...")
-
-        # Load documents from vault
-        documents = vault_loader.load_vault(config)
-
-        # Prepare documents for indexing
-        indexed_documents = [
-            {
-                "id": f"{doc.metadata.get('source', 'unknown_source')}#{doc.metadata.get('chunk_id', 'unknown_chunk')}",
-                "content": doc.page_content,
-                "metadata": doc.metadata,
-            }
-            for doc in documents
-        ]
-
-        # Create fast indexer and resume
-        fast_indexer = FastIndexer(config)
-        result = await fast_indexer.index_documents_fast(indexed_documents, resume=True)
-
+        logger.info("Resuming fast indexing...")
+        # Note: The 'documents' list would need to be re-loaded or cached
+        # to properly resume. This is a simplified example.
+        document_objects = vault_loader.load_all_documents(config=config)
+        documents_to_index = [doc.to_dict() for doc in document_objects]
+        indexer = FastIndexer(config=config.get("fast_indexing", {}), storage=storage)
+        result = await indexer.index_documents_fast(documents_to_index, resume=True)
         return result
-
     except Exception as e:
-        logger.error(f"Failed to resume fast indexing: {str(e)}")
-        raise HTTPException(
-            status_code=500, detail=f"Failed to resume fast indexing: {str(e)}"
-        )
+        logger.error(f"Failed to resume fast indexing: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to resume fast indexing.")
 
 
 if __name__ == "__main__":

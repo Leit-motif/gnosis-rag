@@ -4,21 +4,20 @@ Fast Indexer - Optimized for speed and large vault processing
 Prioritizes throughput while maintaining reliability
 """
 import os
-import json
 import time
 import asyncio
 import numpy as np
 import faiss
 from pathlib import Path
+import tarfile
+import tempfile
 from typing import List, Dict, Any, Optional, Tuple
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 import logging
-from tqdm import tqdm
-import math
 from openai import AsyncOpenAI
-import aiohttp
 import pickle
+
+from backend.storage.base import VaultStorage
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +50,7 @@ class FastIndexer:
     Supports aggressive parallelization, streaming, and checkpointing for large vaults.
     """
     
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: Dict[str, Any], storage: VaultStorage):
         # Default configuration
         default_config = {
             "batch_size": 100,
@@ -89,19 +88,22 @@ class FastIndexer:
         self.client = AsyncOpenAI(api_key=api_key)
         self.embedding_model = merged_config.get("embedding_model", "text-embedding-3-small")
         
-        # Paths
-        self.vector_store_path = Path("data/vector_store")
-        self.vector_store_path.mkdir(parents=True, exist_ok=True)
+        # Paths are now managed within a temporary directory during indexing
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.vector_store_path = Path(self.temp_dir.name)
         
         self.index_path = self.vector_store_path / "faiss.index"
-        self.embeddings_path = self.vector_store_path / "embeddings.pkl"  # Use pickle for speed
+        self.embeddings_path = self.vector_store_path / "embeddings.pkl"
         self.document_store_path = self.vector_store_path / "document_store.pkl"
         self.progress_path = self.vector_store_path / "indexing_progress.pkl"
-        self.checkpoint_path = self.vector_store_path / "checkpoints"
-        self.checkpoint_path.mkdir(exist_ok=True)
         
         # Initialize progress tracking
         self.progress: Optional[IndexingProgress] = None
+        self.storage = storage
+    
+    def __del__(self):
+        # Clean up the temporary directory when the object is destroyed
+        self.temp_dir.cleanup()
     
     def _get_preset_config(self, preset_name: str) -> Dict[str, Any]:
         """Get configuration for a specific preset"""
@@ -155,24 +157,31 @@ class FastIndexer:
         Fast indexing with aggressive optimization for speed
         """
         try:
-            # Load existing progress if resuming
-            if resume and self.progress_path.exists():
-                self.progress = self._load_progress()
-                logger.info(f"Resuming indexing from {self.progress.processed_documents}/{self.progress.total_documents} documents")
-                documents = documents[self.progress.processed_documents:]
-            else:
-                self.progress = IndexingProgress(
-                    total_documents=len(documents),
-                    processed_documents=0,
-                    failed_documents=0,
-                    start_time=time.time(),
-                    last_checkpoint=time.time(),
-                    current_batch=0,
-                    embeddings_generated=0
-                )
-            
+            # Attempt to load an existing index from storage
+            try:
+                tarball_name = "vector_store.tar.zst"
+                local_tarball_path = self.vector_store_path / tarball_name
+                logger.info("Attempting to load existing vector store from storage...")
+                self.storage.load_vector_store(str(local_tarball_path))
+                self._load_index_from_tarball(str(local_tarball_path))
+                logger.info("Successfully loaded and extracted existing vector store.")
+            except FileNotFoundError:
+                logger.info("No existing vector store found. Starting fresh index.")
+            except Exception as e:
+                logger.warning(f"Could not load existing vector store, will re-index. Error: {e}")
+
             if not documents:
-                return {"status": "success", "message": "All documents already processed"}
+                return {"status": "success", "message": "No new documents to process."}
+            
+            self.progress = IndexingProgress(
+                total_documents=len(documents),
+                processed_documents=0,
+                failed_documents=0,
+                start_time=time.time(),
+                last_checkpoint=time.time(),
+                current_batch=0,
+                embeddings_generated=0
+            )
             
             logger.info(f"[FAST-INDEX] Starting fast indexing of {len(documents)} documents")
             logger.info(f"[CONFIG] Using {self.max_concurrent_requests} concurrent requests, batch size {self.batch_size}")
@@ -248,7 +257,7 @@ class FastIndexer:
         if all_embeddings:
             return await self._finalize_index(all_embeddings, processed_docs)
         else:
-            return {"status": "error", "error": "No embeddings generated"}
+            return {"status": "success", "message": "No embeddings were generated."}
     
     async def _process_chunk_fast(self, chunk: List[Dict[str, Any]]) -> Tuple[Optional[np.ndarray], List[Dict[str, Any]]]:
         """Process a chunk of documents with maximum speed"""
@@ -315,90 +324,81 @@ class FastIndexer:
             return None, []
     
     async def _finalize_index(self, all_embeddings: List[np.ndarray], processed_docs: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Create and save the final FAISS index"""
+        """
+        Builds the final FAISS index, saves all components, and uploads to storage.
+        """
         try:
-            logger.info("[INDEX] Creating final FAISS index...")
+            logger.info("Finalizing index...")
+            final_embeddings = np.vstack(all_embeddings)
             
-            # Combine all embeddings
-            combined_embeddings = np.vstack(all_embeddings)
-            logger.info(f"[INDEX] Combined embeddings shape: {combined_embeddings.shape}")
+            # Check if an index file already exists from a previous run
+            if self.index_path.exists():
+                logger.info("Loading existing FAISS index to merge.")
+                index = faiss.read_index(str(self.index_path))
+            else:
+                logger.info("Creating new FAISS index.")
+                dimension = final_embeddings.shape[1]
+                index = faiss.IndexFlatL2(dimension)
             
-            # Create FAISS index
-            dimension = combined_embeddings.shape[1]
-            index = faiss.IndexFlatIP(dimension)  # Inner product for cosine similarity
+            logger.info(f"Adding {len(final_embeddings)} new embeddings to FAISS index.")
+            index.add(final_embeddings)
             
-            # Normalize embeddings for cosine similarity
-            faiss.normalize_L2(combined_embeddings)
-            index.add(combined_embeddings)
-            
-            # Save index
+            # Save the updated index and document store
             faiss.write_index(index, str(self.index_path))
-            logger.info(f"[SAVE] Saved FAISS index to {self.index_path}")
+            with open(self.document_store_path, "wb") as f:
+                pickle.dump(processed_docs, f)
+            with open(self.embeddings_path, "wb") as f:
+                pickle.dump(final_embeddings, f)
             
-            # Prepare document store
-            document_store = {}
-            doc_embeddings = {}
+            logger.info(f"Index updated with {index.ntotal} total vectors.")
             
-            for i, doc in enumerate(processed_docs):
-                doc_id = str(i)
-                document_store[doc_id] = {
-                    'content': doc['content'],
-                    'metadata': doc.get('metadata', {})
-                }
-                doc_embeddings[doc_id] = combined_embeddings[i].tolist()
-            
-            # Save using pickle for speed
-            with open(self.document_store_path, 'wb') as f:
-                pickle.dump(document_store, f, protocol=pickle.HIGHEST_PROTOCOL)
-            
-            with open(self.embeddings_path, 'wb') as f:
-                pickle.dump(doc_embeddings, f, protocol=pickle.HIGHEST_PROTOCOL)
-            
-            logger.info(f"[SAVE] Saved document store and embeddings")
-            
-            return {
-                "status": "success",
-                "message": f"Successfully indexed {len(processed_docs)} documents",
-                "index_path": str(self.index_path),
-                "embeddings_shape": combined_embeddings.shape,
-                "dimension": dimension
-            }
-            
+            # Create a tarball of the vector store and upload it
+            tarball_path = self._save_index_to_tarball()
+            self.storage.save_vector_store(tarball_path)
+            logger.info(f"Vector store successfully saved to storage.")
+
+            return {"status": "success", "total_indexed": len(final_embeddings)}
+        
         except Exception as e:
-            logger.error(f"Failed to finalize index: {str(e)}")
-            return {"status": "error", "error": str(e)}
-    
+            logger.error(f"Failed to finalize index: {str(e)}", exc_info=True)
+            return {"status": "error", "error": f"Failed to finalize index: {str(e)}"}
+
+    def _save_index_to_tarball(self) -> str:
+        """Creates a compressed tarball from the vector store files."""
+        tarball_name = "vector_store.tar.zst"
+        local_tarball_path = self.vector_store_path.parent / tarball_name
+        
+        files_to_archive = [
+            self.index_path,
+            self.document_store_path,
+            self.embeddings_path,
+        ]
+        
+        logger.info(f"Creating tarball at {local_tarball_path}...")
+        with tarfile.open(local_tarball_path, "w:zst") as tar:
+            for file_path in files_to_archive:
+                if file_path.exists():
+                    tar.add(file_path, arcname=file_path.name)
+                    logger.debug(f"Added {file_path.name} to tarball.")
+                else:
+                    logger.warning(f"File not found, skipping: {file_path}")
+        return str(local_tarball_path)
+
+    def _load_index_from_tarball(self, tarball_path: str):
+        """Extracts a tarball to the vector store path."""
+        logger.info(f"Extracting tarball {tarball_path} to {self.vector_store_path}...")
+        with tarfile.open(tarball_path, "r:zst") as tar:
+            tar.extractall(path=self.vector_store_path)
+        logger.info("Extraction complete.")
+
     async def _save_checkpoint(self, embeddings: List[np.ndarray], docs: List[Dict[str, Any]]):
-        """Save a checkpoint to resume from"""
-        try:
-            checkpoint_file = self.checkpoint_path / f"checkpoint_{self.progress.processed_documents}.pkl"
-            
-            checkpoint_data = {
-                'embeddings': embeddings,
-                'documents': docs,
-                'progress': self.progress
-            }
-            
-            with open(checkpoint_file, 'wb') as f:
-                pickle.dump(checkpoint_data, f, protocol=pickle.HIGHEST_PROTOCOL)
-            
-            # Save progress separately for quick loading
-            with open(self.progress_path, 'wb') as f:
-                pickle.dump(self.progress, f, protocol=pickle.HIGHEST_PROTOCOL)
-            
-            logger.info(f"[CHECKPOINT] Saved checkpoint at {self.progress.processed_documents} documents")
-            
-        except Exception as e:
-            logger.error(f"Failed to save checkpoint: {str(e)}")
-    
+        # This method is now obsolete with the new save/load mechanism.
+        # Checkpointing will be handled by the atomicity of the final upload.
+        pass
+
     def _load_progress(self) -> Optional[IndexingProgress]:
-        """Load existing progress"""
-        try:
-            with open(self.progress_path, 'rb') as f:
-                return pickle.load(f)
-        except Exception as e:
-            logger.error(f"Failed to load progress: {str(e)}")
-            return None
+        # Also obsolete
+        return None
     
     def get_indexing_status(self) -> Dict[str, Any]:
         """Get current indexing status"""

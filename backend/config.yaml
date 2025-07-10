@@ -1,8 +1,19 @@
 # Obsidian Vault Configuration
 vault:
-  path: ${OBSIDIAN_VAULT_PATH}
   exclude_folders: ["templates", ".trash", ".git"]
   file_extensions: [".md"]
+
+# Storage Configuration
+storage:
+  # provider can be 'local' or 'gcs'
+  provider: ${STORAGE_PROVIDER:-local} # Default to local if not set
+  local:
+    # Used if provider is 'local'
+    vault_path: ${LOCAL_VAULT_PATH}
+  gcs:
+    # Used if provider is 'gcs'
+    bucket_name: ${GCS_BUCKET_NAME:-}
+    credentials_path: ${GCS_CREDENTIALS_PATH:-} # Optional, for local dev
 
 # Embedding Configuration
 embeddings:
